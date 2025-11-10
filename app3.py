@@ -1296,9 +1296,10 @@ with col1:
 with col2:
     logo_footer_path = "AEST Sede.png"
     if os.path.exists(logo_footer_path):
-        st.image(logo_footer_path, width=150) # Você pode ajustar o 'width'
+        st.image(logo_footer_path, width=50) # Você pode ajustar o 'width'
     else:
         st.caption("Logo AEST não encontrada.")
+
 
 
 
