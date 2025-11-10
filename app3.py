@@ -1286,4 +1286,5 @@ if st.session_state.arquivos_gerados:
         )
 
 # --- Adiciona o rodapé ---
-st.footer("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
+st.caption("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
+
