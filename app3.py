@@ -420,7 +420,8 @@ class DocumentoApp:
         run.font.size = Pt(12)
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
 
-D.adicionar_titulo(texto)
+    # --- CORREÇÃO AQUI: Esta é a definição correta da função ---
+    def adicionar_titulo(self, texto):
         p = self.doc.add_paragraph()
         if self.subsecao_atual == 0:
             run = p.add_run(f"{self.secao_atual}. {texto}")
@@ -430,6 +431,7 @@ D.adicionar_titulo(texto)
         run.font.size = Pt(12)
         run.bold = True
         p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    # --- FIM DA CORREÇÃO ---
 
     def nova_secao(self):
         self.secao_atual += 1
@@ -559,11 +561,10 @@ if os.path.exists(logo_sidebar_path):
 
 st.sidebar.header(" Configurações Avançadas")
 
-# --- ALTERAÇÃO AQUI: Leitura da API Key (sem aviso) ---
+# Leitura da API Key (sem aviso)
 api_key_ui = st.secrets.get("GEMINI_API_KEY") 
-# --- FIM DA ALTERAÇÃO ---
 
-# --- REMOVIDO: Input do diretório ---
+# REMOVIDO: Input do diretório
 
 revisao_texto_gemini_ui = st.sidebar.checkbox("Usar revisão de IA (Gemini)", value=False)
 
@@ -1065,7 +1066,6 @@ if st.button(" Iniciar Geração do Relatório"):
                         nome_relatorio_capitalizado = f"{artigo.capitalize()} {nome_pais_base}"
                     else:
                         artigo = None
-                        # Aviso silencioso no log do servidor, não para o usuário
                         print(f"Não foi possível obter um artigo válido para '{nome_pais_base}'. Usando nome do país sem artigo.")
 
 
@@ -1084,7 +1084,7 @@ if st.button(" Iniciar Geração do Relatório"):
                         fluxo_e_balanca = f"Em {ano_selecionado}, Minas Gerais e {nome_relatorio} tiveram um fluxo comercial de {formatar_valor(fluxo_comercial_ano)}, representando {'aumento' if variacao_fluxo > 0 else 'queda'} de {abs(variacao_fluxo):.2f}% em comparação a {ano_selecionado-1}. A balança comercial fechou {'positiva' if balanca_ano > 0 else 'negativa'} para Minas Gerais em {formatar_valor(balanca_ano)}, apresentando {'um crescimento' if variacao_balanca > 0 else 'uma queda'} de {abs(variacao_balanca):.1f}% em relação a {ano_selecionado-1}."
                         frase_1 = fluxo_e_balanca
                     else:
-                        fluxo_e_balanca = f"Até {meses_pt[ultimo_mes_disponivel]} de {ano_selecionado}, Minas Gerais e {nome_relatorio} tiveram um fluxo comercial de {formatar_valor(fluxo_comercial_ano)}, com {'um aumento' if variacao_fluxo > 0 else 'uma queda'} de {abs(variacao_fluxo):.2f}% em comparação ao mesmo período em {ano_selecionado-1}. A balança comercial fechou {'positiva' if balanca_ano > 0 else 'negativa'} para Minas Gerais em {formatar_valor(balanca_ano)}, apresentando {'um crescimento' if variacao_balanca > 0 else 'uma queda'} de {abs(variacao_balanca):.1f}% em relação ao mesmo período em {ano_selecionado-1}."
+                        fluxo_e_balanca = f"Até {meses_pt[ultimo_mes_disponivel]} de {ano_selecionado}, Minas Gerais e {nome_relatorio} tiveram um fluxo comercial de {formatar_valor(fluxo_comercial_ano)}, com {'um aumento' if variacao_fluxo > 0 else 'uma queda'} de {abs(variacao_fluxo):.2f}% em comparação ao mesmo período em {ano_selecionado-1}. A balança comercial fechou {'positiva' if balanca_ano > 0 else 'negativa'} para Minas Gerais em {formatar_valor(balanca_ano)}, apresentando {'um crescimento' if variacao_valanca > 0 else 'uma queda'} de {abs(variacao_balanca):.1f}% em relação ao mesmo período em {ano_selecionado-1}."
                         frase_1 = fluxo_e_balanca
 
                     if posicao_pais_mg_exp > 0: 
