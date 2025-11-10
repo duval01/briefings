@@ -84,30 +84,56 @@ def carregar_dataframe(url, nome_arquivo, usecols=None, dtypes=None):
         progress_bar.empty()
     return df
 
+# --- ALTERAÇÃO AQUI: Funções de País Refatoradas ---
+
 @st.cache_data
-def obter_codigo_pais(nome_pais):
-    """Obtém o código do país a partir do nome."""
+def obter_dados_paises():
+    """Carrega a tabela de países (ID e Nome) e armazena em cache."""
     url_pais = "https://balanca.economia.gov.br/balanca/bd/tabelas/PAIS.csv"
-    df_pais = carregar_dataframe(url_pais, "PAIS.csv", usecols=['NO_PAIS', 'CO_PAIS']) 
+    df_pais = carregar_dataframe(url_pais, "PAIS.csv", usecols=['NO_PAIS', 'CO_PAIS'])
     if df_pais is not None and not df_pais.empty:
-        filtro_pais = df_pais[df_pais['NO_PAIS'] == nome_pais]
-        if not filtro_pais.empty:
-            codigo_pais = filtro_pais['CO_PAIS'].iloc[0]
-            return codigo_pais
+        return df_pais
     return None
 
-def validar_paises(paises):
+def obter_lista_de_paises():
+    """Retorna uma lista de nomes de países válidos."""
+    df_pais = obter_dados_paises() # Usa a função cacheada
+    if df_pais is not None:
+        lista_paises = df_pais[df_pais['NO_PAIS'] != "Brasil"]['NO_PAIS'].unique().tolist()
+        lista_paises.sort()
+        return lista_paises
+    return ["Erro ao carregar lista de países"] # Fallback
+
+def obter_codigo_pais(nome_pais):
+    """Obtém o código do país a partir do nome, usando o DF cacheado."""
+    df_pais = obter_dados_paises()
+    if df_pais is not None:
+        filtro_pais = df_pais[df_pais['NO_PAIS'] == nome_pais]
+        if not filtro_pais.empty:
+            return filtro_pais['CO_PAIS'].iloc[0]
+    return None
+
+def validar_paises(paises_selecionados):
     """Valida a lista de países e retorna códigos e nomes válidos."""
+    df_pais = obter_dados_paises() # Pega o DF cacheado
+    if df_pais is None:
+        st.error("Falha ao carregar dados dos países.")
+        return [], [], []
+
     codigos_paises = []
     nomes_paises_validos = []
     paises_invalidos = []
 
-    for pais in paises:
+    # Cria um mapa de Nome -> Código para busca rápida
+    mapa_paises = pd.Series(df_pais.CO_PAIS.values, index=df_pais.NO_PAIS).to_dict()
+
+    for pais in paises_selecionados:
         if pais.lower() == "brasil":
             paises_invalidos.append(f"{pais} (Não é possível fazer busca no Brasil)")
             continue
-            
-        codigo_pais = obter_codigo_pais(pais)
+        
+        codigo_pais = mapa_paises.get(pais) # Busca no mapa
+        
         if codigo_pais is None:
             paises_invalidos.append(f"{pais} (País não encontrado)")
         else:
@@ -115,6 +141,8 @@ def validar_paises(paises):
             nomes_paises_validos.append(pais)
 
     return codigos_paises, nomes_paises_validos, paises_invalidos
+
+# --- FIM DAS ALTERAÇÕES DE PAÍS ---
 
 def filtrar_dados_por_estado_e_mes(df, estados, ultimo_mes_disponivel, ano_completo):
     """Filtra o DataFrame por estado e, se necessário, por mês."""
@@ -420,7 +448,6 @@ class DocumentoApp:
         run.font.size = Pt(12)
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
 
-    # --- CORREÇÃO AQUI: Esta é a definição correta da função ---
     def adicionar_titulo(self, texto):
         p = self.doc.add_paragraph()
         if self.subsecao_atual == 0:
@@ -431,7 +458,6 @@ class DocumentoApp:
         run.font.size = Pt(12)
         run.bold = True
         p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    # --- FIM DA CORREÇÃO ---
 
     def nova_secao(self):
         self.secao_atual += 1
@@ -557,20 +583,22 @@ if 'arquivos_gerados' not in st.session_state:
 
 logo_sidebar_path = "LogoMinasGerais.png"
 if os.path.exists(logo_sidebar_path):
-    st.sidebar.image(logo_sidebar_path, width=250)
+    st.sidebar.image(logo_sidebar_path, width=150)
 
 st.sidebar.header(" Configurações Avançadas")
 
 # Leitura da API Key (sem aviso)
 api_key_ui = st.secrets.get("GEMINI_API_KEY") 
 
-# REMOVIDO: Input do diretório
-
 revisao_texto_gemini_ui = st.sidebar.checkbox("Usar revisão de IA (Gemini)", value=False)
 
 
 # --- ENTRADAS PRINCIPAIS ---
 st.header("1. Configurações da Análise")
+
+# --- ALTERAÇÃO AQUI: Carrega a lista de países para o multiselect ---
+lista_de_paises = obter_lista_de_paises()
+# --- FIM DA ALTERAÇÃO ---
 
 col1, col2 = st.columns(2)
 with col1:
@@ -583,12 +611,14 @@ with col1:
         help="Os dados de 1997 podem estar incompletos."
     )
 with col2:
-    paises_input = st.text_input(
-        "País(es) (separados por '; '):",
-        "China; Estados Unidos",
-        help="Ex: 'China' ou 'China; Estados Unidos; Argentina'"
+    # --- ALTERAÇÃO AQUI: Substitui text_input por multiselect ---
+    paises = st.multiselect(
+        "Selecione o(s) país(es):",
+        options=lista_de_paises,
+        default=["China", "Estados Unidos"], # Mantém os padrões
+        help="Você pode digitar para pesquisar e selecionar múltiplos países."
     )
-    paises = [pais.strip() for pais in paises_input.split('; ')]
+    # --- FIM DA ALTERAÇÃO ---
 
 # --- LÓGICA CONDICIONAL PARA ENTRADAS ---
 agrupado = False
@@ -621,7 +651,7 @@ if st.button(" Iniciar Geração do Relatório"):
         st.warning(f"Aviso: A logo 'LogoMinasGerais.png' não foi encontrada. O cabeçalho será gerado sem a logo.")
         logo_path_to_use = None
     
-    with st.spinner(f"Gerando relatório para {paises_input} ({ano_selecionado})... Isso pode levar alguns minutos."):
+    with st.spinner(f"Gerando relatório para {', '.join(paises)} ({ano_selecionado})... Isso pode levar alguns minutos."):
         
         try:
             # --- Validação de Países ---
@@ -1084,7 +1114,7 @@ if st.button(" Iniciar Geração do Relatório"):
                         fluxo_e_balanca = f"Em {ano_selecionado}, Minas Gerais e {nome_relatorio} tiveram um fluxo comercial de {formatar_valor(fluxo_comercial_ano)}, representando {'aumento' if variacao_fluxo > 0 else 'queda'} de {abs(variacao_fluxo):.2f}% em comparação a {ano_selecionado-1}. A balança comercial fechou {'positiva' if balanca_ano > 0 else 'negativa'} para Minas Gerais em {formatar_valor(balanca_ano)}, apresentando {'um crescimento' if variacao_balanca > 0 else 'uma queda'} de {abs(variacao_balanca):.1f}% em relação a {ano_selecionado-1}."
                         frase_1 = fluxo_e_balanca
                     else:
-                        fluxo_e_balanca = f"Até {meses_pt[ultimo_mes_disponivel]} de {ano_selecionado}, Minas Gerais e {nome_relatorio} tiveram um fluxo comercial de {formatar_valor(fluxo_comercial_ano)}, com {'um aumento' if variacao_fluxo > 0 else 'uma queda'} de {abs(variacao_fluxo):.2f}% em comparação ao mesmo período em {ano_selecionado-1}. A balança comercial fechou {'positiva' if balanca_ano > 0 else 'negativa'} para Minas Gerais em {formatar_valor(balanca_ano)}, apresentando {'um crescimento' if variacao_valanca > 0 else 'uma queda'} de {abs(variacao_balanca):.1f}% em relação ao mesmo período em {ano_selecionado-1}."
+                        fluxo_e_balanca = f"Até {meses_pt[ultimo_mes_disponivel]} de {ano_selecionado}, Minas Gerais e {nome_relatorio} tiveram um fluxo comercial de {formatar_valor(fluxo_comercial_ano)}, com {'um aumento' if variacao_fluxo > 0 else 'uma queda'} de {abs(variacao_fluxo):.2f}% em comparação ao mesmo período em {ano_selecionado-1}. A balança comercial fechou {'positiva' if balanca_ano > 0 else 'negativa'} para Minas Gerais em {formatar_valor(balanca_ano)}, apresentando {'um crescimento' if variacao_balanca > 0 else 'uma queda'} de {abs(variacao_balanca):.1f}% em relação ao mesmo período em {ano_selecionado-1}."
                         frase_1 = fluxo_e_balanca
 
                     if posicao_pais_mg_exp > 0: 
@@ -1288,23 +1318,16 @@ if st.session_state.arquivos_gerados:
 # --- Bloco de Rodapé (Corrigido com Logo à Esquerda) ---
 st.divider() 
 
-# --- ALTERAÇÃO AQUI: Proporção invertida e alinhamento mantido ---
 col1, col2 = st.columns([0.3, 0.7], vertical_alignment="center") 
 
 with col1:
     # Coluna 1 (menor) agora contém a logo
     logo_footer_path = "AEST Sede.png"
     if os.path.exists(logo_footer_path):
-        st.image(logo_footer_path, width=65) # Você pode ajustar o 'width'
+        st.image(logo_footer_path, width=150) # Você pode ajustar o 'width'
     else:
         st.caption("Logo AEST não encontrada.")
 
 with col2:
     # Coluna 2 (maior) agora contém o texto
     st.caption("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
-
-
-
-
-
-
