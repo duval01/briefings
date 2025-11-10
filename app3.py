@@ -37,7 +37,7 @@ def ler_dados_csv_online(url):
     retries = 3
     for attempt in range(retries):
         try:
-            resposta = requests.get(url, verify=False, timeout=(10, 60))
+            resposta = requests.get(url, verify=False, timeout=(10, 1200))
             resposta.raise_for_status()
             df = pd.read_csv(StringIO(resposta.content.decode('latin-1')), encoding='latin-1',
                              sep=';', dtype={'CO_SH4': str, 'CO_NCM': str})
