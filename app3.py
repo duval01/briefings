@@ -30,9 +30,8 @@ meses_pt = {
 }
 
 # --- LISTAS DE COLUNAS PARA OTIMIZAÇÃO ---
-# Define apenas as colunas que realmente precisamos dos arquivos gigantes
 NCM_COLS = ['VL_FOB', 'CO_PAIS', 'CO_MES', 'SG_UF_NCM', 'CO_NCM']
-NCM_DTYPES = {'CO_NCM': str, 'CO_SH4': str} # Dtypes para colunas de string
+NCM_DTYPES = {'CO_NCM': str, 'CO_SH4': str} 
 
 MUN_COLS = ['VL_FOB', 'CO_PAIS', 'CO_MES', 'SG_UF_MUN', 'CO_MUN']
 MUN_DTYPES = {'CO_MUN': str}
@@ -41,24 +40,22 @@ MUN_DTYPES = {'CO_MUN': str}
 # --- FUNÇÕES DE LÓGICA (OTIMIZADAS) ---
 
 @st.cache_data(ttl=3600)
-def ler_dados_csv_online(url, usecols=None, dtypes=None): # <--- Assinatura alterada
+def ler_dados_csv_online(url, usecols=None, dtypes=None):
     """Lê dados CSV da URL com retentativas e colunas/dtypes específicos."""
     retries = 3
     for attempt in range(retries):
         try:
-            # Mantém o timeout longo de 20 minutos
             resposta = requests.get(url, verify=False, timeout=(10, 1200)) 
             resposta.raise_for_status()
             
-            # Usa os dtypes padrão e atualiza com os específicos (se houver)
             final_dtypes = {'CO_SH4': str, 'CO_NCM': str}
             if dtypes:
                 final_dtypes.update(dtypes)
 
             df = pd.read_csv(StringIO(resposta.content.decode('latin-1')), encoding='latin-1',
                              sep=';', 
-                             dtype=final_dtypes, # Usa dtypes
-                             usecols=usecols)     # Usa usecols
+                             dtype=final_dtypes,
+                             usecols=usecols)
             return df
         except requests.exceptions.RequestException as e:
             st.error(f"Erro ao acessar o CSV (tentativa {attempt + 1}/{retries}): {e}")
@@ -77,10 +74,10 @@ def ler_dados_csv_online(url, usecols=None, dtypes=None): # <--- Assinatura alte
     return None
 
 @st.cache_data(ttl=3600)
-def carregar_dataframe(url, nome_arquivo, usecols=None, dtypes=None): # <--- Assinatura alterada
+def carregar_dataframe(url, nome_arquivo, usecols=None, dtypes=None):
     """Carrega o DataFrame da URL (usa cache) com colunas e dtypes."""
     progress_bar = st.progress(0, text=f"Carregando {nome_arquivo}...")
-    df = ler_dados_csv_online(url, usecols=usecols, dtypes=dtypes) # <--- Passa adiante
+    df = ler_dados_csv_online(url, usecols=usecols, dtypes=dtypes)
     if df is not None:
         progress_bar.progress(100, text=f"{nome_arquivo} carregado com sucesso.")
     else:
@@ -91,7 +88,6 @@ def carregar_dataframe(url, nome_arquivo, usecols=None, dtypes=None): # <--- Ass
 def obter_codigo_pais(nome_pais):
     """Obtém o código do país a partir do nome."""
     url_pais = "https://balanca.economia.gov.br/balanca/bd/tabelas/PAIS.csv"
-    # Otimizado: carrega apenas as colunas necessárias
     df_pais = carregar_dataframe(url_pais, "PAIS.csv", usecols=['NO_PAIS', 'CO_PAIS']) 
     if df_pais is not None and not df_pais.empty:
         filtro_pais = df_pais[df_pais['NO_PAIS'] == nome_pais]
@@ -273,6 +269,7 @@ def agregar_dados_por_produto(df, df_ncm, ano_completo, ultimo_mes_disponivel):
 
 # --- FUNÇÕES DE IA (Refatoradas para aceitar api_key) ---
 
+@st.cache_data
 def obter_artigo_pais_gemini(nome_pais, api_key):
     """Chama a API do Gemini para obter o artigo de um país."""
     if not api_key:
@@ -280,7 +277,17 @@ def obter_artigo_pais_gemini(nome_pais, api_key):
         return None
         
     st.info(f"Consultando IA para obter o artigo de '{nome_pais}'...")
-    prompt = f"Qual o artigo para me referir ao território \"{nome_pais}\". Responda somente com o artigo"
+    
+    # --- ALTERAÇÃO AQUI: Prompt melhorado para artigos ---
+    prompt = f"""Qual o artigo definido (o, a, os, as) correto para se referir ao país "{nome_pais}"? 
+    Responda APENAS com o artigo.
+    Por exemplo:
+    - Para "Brasil" responda "o"
+    - Para "China" responda "a"
+    - Para "Estados Unidos" responda "os"
+    - Para "Filipinas" responda "as"
+    """
+    # --- FIM DA ALTERAÇÃO ---
 
     url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=' + api_key
     headers = {'Content-Type': 'application/json'}
@@ -294,7 +301,11 @@ def obter_artigo_pais_gemini(nome_pais, api_key):
         if 'candidates' in conteudo_resposta and conteudo_resposta['candidates']:
             texto_bruto = conteudo_resposta['candidates'][0]['content']['parts'][0]['text']
             artigo = texto_bruto.strip().replace('.', '').lower()
-            return artigo
+            if artigo in ['o', 'a', 'os', 'as']:
+                return artigo
+            else:
+                st.warning(f"IA retornou um artigo inválido ('{artigo}') para '{nome_pais}'.")
+                return None
         else:
             st.warning("A API não retornou um candidato válido para o artigo.")
             return None
@@ -303,6 +314,7 @@ def obter_artigo_pais_gemini(nome_pais, api_key):
         return None
 
 
+@st.cache_data
 def chamar_gemini(texto, api_key):
     """Chama a API do Google Gemini para processar o texto."""
     if not api_key:
@@ -366,14 +378,15 @@ def sanitize_filename(filename):
 # --- CLASSE DE DOCUMENTO (Refatorada para aceitar caminhos) ---
 
 class DocumentoApp:
-    def __init__(self, logo_path, diretorio_base):
+    # --- ALTERAÇÃO AQUI: Removido diretorio_base do construtor ---
+    def __init__(self, logo_path):
         self.doc = Document()
         self.secao_atual = 0
         self.subsecao_atual = 0
         self.titulo_doc = ""
-        # Caminhos recebidos na instanciação
         self.logo_path = logo_path
-        self.diretorio_base = diretorio_base
+        # O diretório base agora é fixo para /tmp/ no servidor
+        self.diretorio_base = "/tmp/" 
 
     def set_titulo(self, titulo):
         self.titulo_doc = sanitize_filename(titulo)
@@ -442,7 +455,6 @@ class DocumentoApp:
         paragraph_imagem.paragraph_format.space_after = Pt(0)
         
         run_imagem = paragraph_imagem.add_run()
-        # USA O CAMINHO DO LOGO FORNECIDO (se ele existir)
         if self.logo_path and os.path.exists(self.logo_path):
             try:
                 run_imagem.add_picture(self.logo_path,
@@ -452,7 +464,6 @@ class DocumentoApp:
                 st.error(f"Erro ao adicionar imagem do logo ao Docx: {e}")
                 paragraph_imagem.add_run("[Logo não encontrado]")
         else:
-            # Não emite aviso aqui, o aviso já foi dado na UI principal
             paragraph_imagem.add_run("[Logo não encontrado]")
 
         paragraph_imagem.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -465,56 +476,49 @@ class DocumentoApp:
             "Superintendência de Atração de Investimentos e Estímulo à Exportação"
         ]
         
-        # --- Formatação de cabeçalho (das alterações anteriores) ---
+        # --- ALTERAÇÃO AQUI: Formatação de cabeçalho explícita ---
         
-        # Linha 1: "GOVERNO DO ESTADO..."
-        p = cell_texto.paragraphs[0]
-        p.text = textos[0]
-        p.paragraph_format.space_before = Pt(0)
-        p.paragraph_format.space_after = Pt(0)
-        p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
-        p.paragraph_format.line_spacing = Pt(11)
-        p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-        for run in p.runs:
-            run.font.name = 'Times New Roman'
-            run.font.size = Pt(11)
-            run.bold = True # Linha 1: BOLD
-
-        # Linha 2: "SECRETARIA DE ESTADO..."
-        p = cell_texto.add_paragraph(textos[1])
-        p.paragraph_format.space_before = Pt(0)
-        p.paragraph_format.space_after = Pt(0)
-        p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
-        p.paragraph_format.line_spacing = Pt(11)
-        p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-        for run in p.runs:
-            run.font.name = 'Times New Roman'
-            run.font.size = Pt(11)
-            run.bold = True # Linha 2: BOLD
-        
-        # Linhas 3 e 4 (Subsecretaria, Superintendência)
-        for texto in textos[2:]: 
-            p = cell_texto.add_paragraph(texto)
+        def formatar_paragrafo_cabecalho(p):
             p.paragraph_format.space_before = Pt(0)
             p.paragraph_format.space_after = Pt(0)
             p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
             p.paragraph_format.line_spacing = Pt(11)
             p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-            for run in p.runs:
-                run.font.name = 'Times New Roman'
-                run.font.size = Pt(11)
-                run.bold = False # Linhas 3 e 4: REGULAR
-        # --- Fim da formatação ---
+
+        # Linha 1: "GOVERNO DO ESTADO..."
+        p = cell_texto.paragraphs[0]
+        formatar_paragrafo_cabecalho(p)
+        run = p.add_run(textos[0])
+        run.font.name = 'Times New Roman'
+        run.font.size = Pt(11)
+        run.bold = True # Linha 1: BOLD
+
+        # Linha 2: "SECRETARIA DE ESTADO..."
+        p = cell_texto.add_paragraph()
+        formatar_paragrafo_cabecalho(p)
+        run = p.add_run(textos[1])
+        run.font.name = 'Times New Roman'
+        run.font.size = Pt(11)
+        run.bold = True # Linha 2: BOLD
+        
+        # Linhas 3 e 4 (Subsecretaria, Superintendência)
+        for texto in textos[2:]: 
+            p = cell_texto.add_paragraph()
+            formatar_paragrafo_cabecalho(p)
+            run = p.add_run(texto)
+            run.font.name = 'Times New Roman'
+            run.font.size = Pt(11)
+            run.bold = False # Linhas 3 e 4: REGULAR
+        # --- FIM DA ALTERAÇÃO ---
 
     def finalizar_documento(self):
         """Salva o documento em memória e retorna."""
         
-        # Para Vercel/Colab, o diretório precisa ser gravável
         diretorio_real = self.diretorio_base
         try:
             os.makedirs(diretorio_real, exist_ok=True)
         except Exception:
-            st.warning(f"Caminho '{diretorio_real}' não é gravável. Salvando em '/tmp/'.")
+            # Em ambientes serverless, /tmp/ é o único local gravável
             diretorio_real = "/tmp/"
             os.makedirs(diretorio_real, exist_ok=True)
             
@@ -522,24 +526,20 @@ class DocumentoApp:
         nome_arquivo_sanitizado = sanitize_filename(nome_arquivo)
         caminho_completo = os.path.join(diretorio_real, nome_arquivo_sanitizado)
 
-        # Salva em um buffer de memória para o Streamlit
         file_stream = io.BytesIO()
         self.doc.save(file_stream)
         file_stream.seek(0)
         
-        # Salva os bytes brutos
         file_bytes = file_stream.getvalue()
-
         st.success(f"Documento '{nome_arquivo_sanitizado}' gerado com sucesso!")
         
-        # Tenta salvar localmente
         try:
             self.doc.save(caminho_completo)
             st.info(f"Salvo no servidor em: {caminho_completo}")
-        except Exception as e:
-            st.warning(f"Não foi possível salvar no servidor em '{caminho_completo}'. Erro: {e}")
+        except Exception:
+            # Não é um erro crítico se não puder salvar no servidor
+            pass 
 
-        # Retorna os bytes, não o stream
         return file_bytes, nome_arquivo_sanitizado
 
 
@@ -553,17 +553,27 @@ st.title(" automação de Briefings ComexStat")
 # --- Inicialização do Session State ---
 if 'arquivos_gerados' not in st.session_state:
     st.session_state.arquivos_gerados = []
-# --- FIM ---
 
 # --- ENTRADAS DO USUÁRIO NA SIDEBAR ---
+
+# --- ALTERAÇÃO AQUI: Logo da Sidebar adicionada ---
+logo_sidebar_path = "LogoMinasGerais.png"
+if os.path.exists(logo_sidebar_path):
+    st.sidebar.image(logo_sidebar_path, width=150)
+else:
+    st.sidebar.warning("Logo não encontrado.")
+# --- FIM DA ALTERAÇÃO ---
+
 st.sidebar.header(" Configurações Avançadas")
 
-api_key_ui = st.sidebar.text_input("API Key Gemini:", type="password", help="Sua chave de API do Google AI Studio.")
-diretorio_ui = st.sidebar.text_input(
-    "Diretório para salvar (Servidor):",
-    "/tmp/briefings_gerados", # Caminho padrão para Vercel/Linux
-    help="Caminho no servidor onde o .docx será salvo. '/tmp/' é um local seguro."
-)
+# --- ALTERAÇÃO AQUI: Leitura da API Key do Streamlit Secrets ---
+api_key_ui = st.secrets.get("GEMINI_API_KEY") 
+if not api_key_ui:
+    st.sidebar.warning("API Key do Gemini não configurada nos 'Secrets' do Streamlit.")
+# --- FIM DA ALTERAÇÃO ---
+
+# --- REMOVIDO: Input do diretório ---
+
 revisao_texto_gemini_ui = st.sidebar.checkbox("Usar revisão de IA (Gemini)", value=False)
 
 
@@ -573,7 +583,7 @@ st.header("1. Configurações da Análise")
 col1, col2 = st.columns(2)
 with col1:
     ano_atual = datetime.now().year
-    ano_selecionado = st.number_input( # Salva o ano em uma var separada para usar no nome do zip
+    ano_selecionado = st.number_input(
         "Digite o ano:",
         min_value=1998,
         max_value=ano_atual,
@@ -619,10 +629,8 @@ if st.button(" Iniciar Geração do Relatório"):
         st.warning(f"Aviso: A logo 'LogoMinasGerais.png' não foi encontrada. O cabeçalho será gerado sem a logo.")
         logo_path_to_use = None
     
-    if not diretorio_ui:
-        st.error("Erro de Diretório: Por favor, especifique um diretório para salvar na sidebar.")
-        st.stop() 
-
+    # O diretório é fixo em /tmp/ no servidor, não precisa de validação de input
+    
     with st.spinner(f"Gerando relatório para {paises_input} ({ano_selecionado})... Isso pode levar alguns minutos."):
         
         try:
@@ -798,7 +806,7 @@ if st.button(" Iniciar Geração do Relatório"):
 
             if agrupado:
                 # --- LÓGICA PARA AGRUPADOS ---
-                app = DocumentoApp(logo_path=logo_path_to_use, diretorio_base=diretorio_ui)
+                app = DocumentoApp(logo_path=logo_path_to_use)
                 paises_corretos = nomes_paises_validos # Usa a lista de nomes validados
                 nome_relatorio = nome_agrupamento if nome_agrupamento else ', '.join(paises_corretos)
 
@@ -946,7 +954,7 @@ if st.button(" Iniciar Geração do Relatório"):
                 
                 for pais in paises_corretos:
                     st.subheader(f"Processando: {pais}")
-                    app = DocumentoApp(logo_path=logo_path_to_use, diretorio_base=diretorio_ui)
+                    app = DocumentoApp(logo_path=logo_path_to_use)
                     
                     # Recalcula os códigos para este loop específico
                     codigos_paises_loop = [obter_codigo_pais(pais)]
@@ -1301,3 +1309,7 @@ if st.session_state.arquivos_gerados:
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             key=f"download_{arquivo['name']}"
         )
+
+# --- ALTERAÇÃO AQUI: Adiciona o rodapé ---
+st.footer("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
+# --- FIM DA ALTERAÇÃO ---
