@@ -446,8 +446,8 @@ class DocumentoApp:
         largura_total_cm = 25.0
         table = header.add_table(rows=1, cols=2, width=Cm(largura_total_cm))
         table.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        table.columns[0].width = Cm(10.0)
-        table.columns[1].width = Cm(15.0)
+        table.columns[0].width = Cm(7.0)
+        table.columns[1].width = Cm(18.0)
 
         cell_imagem = table.cell(0, 0)
         paragraph_imagem = cell_imagem.paragraphs[0]
@@ -1103,5 +1103,6 @@ with col1:
 with col2:
     # Coluna 2 (maior) agora contém o texto
     st.caption("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
+
 
 
