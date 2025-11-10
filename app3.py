@@ -29,13 +29,11 @@ meses_pt = {
     7: "julho", 8: "agosto", 9: "setembro", 10: "outubro", 11: "novembro", 12: "dezembro"
 }
 
-# --- ALTERAÇÃO AQUI: Adicionado mapa de meses para o filtro ---
 MESES_MAPA = {
     "Janeiro": 1, "Fevereiro": 2, "Março": 3, "Abril": 4, "Maio": 5, "Junho": 6,
     "Julho": 7, "Agosto": 8, "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12
 }
 LISTA_MESES = list(MESES_MAPA.keys())
-# --- FIM DA ALTERAÇÃO ---
 
 # --- LISTAS DE COLUNAS PARA OTIMIZAÇÃO ---
 NCM_COLS = ['VL_FOB', 'CO_PAIS', 'CO_MES', 'SG_UF_NCM', 'CO_NCM']
@@ -66,6 +64,7 @@ def ler_dados_csv_online(url, usecols=None, dtypes=None):
                              usecols=usecols)
             return df
         except requests.exceptions.RequestException as e:
+            # Mantém logs de erro para o usuário
             st.error(f"Erro ao acessar o CSV (tentativa {attempt + 1}/{retries}): {e}")
             if "Read timed out" in str(e) and attempt < retries - 1:
                 st.warning("Download demorou muito. Tentando novamente...")
@@ -84,12 +83,14 @@ def ler_dados_csv_online(url, usecols=None, dtypes=None):
 @st.cache_data(ttl=3600)
 def carregar_dataframe(url, nome_arquivo, usecols=None, dtypes=None):
     """Carrega o DataFrame da URL (usa cache) com colunas e dtypes."""
-    progress_bar = st.progress(0, text=f"Carregando {nome_arquivo}...")
+    # --- ALTERAÇÃO AQUI: Remove st.progress ---
+    # progress_bar = st.progress(0, text=f"Carregando {nome_arquivo}...")
     df = ler_dados_csv_online(url, usecols=usecols, dtypes=dtypes)
-    if df is not None:
-        progress_bar.progress(100, text=f"{nome_arquivo} carregado com sucesso.")
-    else:
-        progress_bar.empty()
+    # if df is not None:
+    #     progress_bar.progress(100, text=f"{nome_arquivo} carregado com sucesso.")
+    # else:
+    #     progress_bar.empty()
+    # --- FIM DA ALTERAÇÃO ---
     return df
 
 @st.cache_data
@@ -148,7 +149,6 @@ def validar_paises(paises_selecionados):
 
     return codigos_paises, nomes_paises_validos, paises_invalidos
 
-# --- ALTERAÇÃO AQUI: Funções de filtro agora usam a lista de meses ---
 def filtrar_dados_por_estado_e_mes(df, estados, meses_para_filtrar):
     """Filtra o DataFrame por estado e pelos meses selecionados."""
     df_filtrado = df[df['SG_UF_NCM'].isin(list(estados))]
@@ -173,7 +173,6 @@ def calcular_soma_por_estado(df, df_anterior=None):
         return soma_ano, soma_ano_anterior
     else:
         return soma_ano
-# --- FIM DA ALTERAÇÃO ---
 
 def calcular_classificacao_estados(soma_ano, soma_ano_anterior, ano_principal, ano_comparacao):
     """Calcula a classificação dos estados por valor total."""
@@ -292,8 +291,10 @@ def obter_artigo_pais_gemini(nome_pais, api_key):
         st.warning("Função de Artigo: API Key do Gemini não configurada nos 'Secrets'.")
         return None
         
-    st.info(f"Consultando IA para obter o artigo de '{nome_pais}'...")
+    # --- ALTERAÇÃO AQUI: Remove st.info ---
+    # st.info(f"Consultando IA para obter o artigo de '{nome_pais}'...")
     
+    # Prompt melhorado para artigos
     prompt = f"""Qual o artigo definido (o, a, os, as) correto para se referir ao país "{nome_pais}"? 
     Responda APENAS com o artigo.
     Por exemplo:
@@ -530,7 +531,6 @@ class DocumentoApp:
         try:
             os.makedirs(diretorio_real, exist_ok=True)
         except Exception:
-            # Em ambientes serverless, /tmp/ é o único local gravável
             diretorio_real = "/tmp/"
             os.makedirs(diretorio_real, exist_ok=True)
             
@@ -547,7 +547,8 @@ class DocumentoApp:
         
         try:
             self.doc.save(caminho_completo)
-            st.info(f"Salvo no servidor em: {caminho_completo}")
+            # --- ALTERAÇÃO AQUI: Remove st.info ---
+            # st.info(f"Salvo no servidor em: {caminho_completo}")
         except Exception:
             pass 
 
@@ -573,7 +574,6 @@ if os.path.exists(logo_sidebar_path):
 
 st.sidebar.header(" Configurações Avançadas")
 
-# Leitura da API Key (sem aviso)
 api_key_ui = st.secrets.get("GEMINI_API_KEY") 
 
 revisao_texto_gemini_ui = st.sidebar.checkbox("Usar revisão de IA (Gemini)", value=False)
@@ -585,7 +585,6 @@ st.header("1. Configurações da Análise")
 lista_de_paises = obter_lista_de_paises()
 ano_atual = datetime.now().year
 
-# --- ALTERAÇÃO AQUI: Novos seletores de Ano e Mês ---
 col1, col2 = st.columns(2)
 with col1:
     ano_principal = st.number_input(
@@ -615,8 +614,6 @@ with col2:
         options=LISTA_MESES,
         help="Selecione os meses. Se deixar em branco, o ano inteiro será analisado."
     )
-# --- FIM DA ALTERAÇÃO ---
-
 
 # --- LÓGICA CONDICIONAL PARA ENTRADAS ---
 agrupado = False
@@ -667,13 +664,11 @@ if st.button(" Iniciar Geração do Relatório"):
             url_imp_ano_comparacao = f"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/ncm/IMP_{ano_comparacao}.csv"
             url_ncm = "https://balanca.economia.gov.br/balanca/bd/tabelas/NCM_SH.csv"
             url_exp_mun_principal = f"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/mun/EXP_{ano_principal}_MUN.csv"
-            url_exp_mun_comparacao = f"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/mun/EXP_{ano_comparacao}_MUN.csv" # Você não tinha isso no original, mas é necessário para comparar municípios
             url_imp_mun_principal = f"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/mun/IMP_{ano_principal}_MUN.csv"
-            url_imp_mun_comparacao = f"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/mun/IMP_{ano_comparacao}_MUN.csv" # Também necessário
             url_uf_mun = "https://balanca.economia.gov.br/balanca/bd/tabelas/UF_MUN.csv"
             
             # --- 1. Carregar dados comuns (pequenos) ---
-            st.info("Carregando tabelas auxiliares (NCM, UF)...")
+            # st.info("Carregando tabelas auxiliares (NCM, UF)...") # REMOVIDO
             df_ncm = carregar_dataframe(url_ncm, "NCM_SH.csv", usecols=['CO_SH4', 'NO_SH4_POR'])
             df_uf_mun = carregar_dataframe(url_uf_mun, "UF_MUN.csv", usecols=['CO_MUN_GEO', 'NO_MUN_MIN'])
             
@@ -682,7 +677,7 @@ if st.button(" Iniciar Geração do Relatório"):
                 st.stop()
 
             # --- 2. Bloco de Exportação ---
-            st.info(f"Processando dados de Exportação (NCM) para {ano_principal} e {ano_comparacao}...")
+            # st.info(f"Processando dados de Exportação (NCM) para {ano_principal} e {ano_comparacao}...") # REMOVIDO
             df_exp_ano = carregar_dataframe(url_exp_ano_principal, f"EXP_{ano_principal}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
             df_exp_ano_anterior = carregar_dataframe(url_exp_ano_comparacao, f"EXP_{ano_comparacao}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
 
@@ -694,13 +689,12 @@ if st.button(" Iniciar Geração do Relatório"):
             ultimo_mes_disponivel = df_exp_ano['CO_MES'].max()
             meses_para_filtrar = []
             
-            if not meses_selecionados: # Se a lista estiver vazia, pega o ano "completo" (até onde há dados)
+            if not meses_selecionados: 
                 meses_para_filtrar = list(range(1, ultimo_mes_disponivel + 1))
                 nome_periodo = f"o ano de {ano_principal} (até {meses_pt[ultimo_mes_disponivel]})"
                 nome_periodo_comp = f"o mesmo período de {ano_comparacao}"
             else:
                 meses_para_filtrar = [MESES_MAPA[m] for m in meses_selecionados]
-                # Validação: O usuário selecionou meses que já existem?
                 if max(meses_para_filtrar) > ultimo_mes_disponivel:
                     st.error(f"O ano {ano_principal} só possui dados até {meses_pt[ultimo_mes_disponivel]}. Por favor, desmarque os meses posteriores.")
                     st.stop()
@@ -741,7 +735,7 @@ if st.button(" Iniciar Geração do Relatório"):
             produtos_exportacao = agregar_dados_por_produto(df_exp_ano_mg_paises.copy(), df_ncm)
             
             # --- 2b. Municípios Exportação ---
-            st.info("Processando dados de Exportação (Municípios)...")
+            # st.info("Processando dados de Exportação (Municípios)...") # REMOVIDO
             df_exp_mun = carregar_dataframe(url_exp_mun_principal, f"EXP_{ano_principal}_MUN.csv", usecols=MUN_COLS)
             if df_exp_mun is None:
                 st.error("Não foi possível carregar dados de exportação por município. Abortando.")
@@ -751,11 +745,11 @@ if st.button(" Iniciar Geração do Relatório"):
             exportacoes_por_municipio, total_exportacoes_municipios = agregar_dados_por_municipio(df_exp_mun_filtrado)
             
             # --- 3. Liberar Memória (Exportação) ---
-            st.info("Liberando memória de exportação...")
+            # st.info("Liberando memória de exportação...") # REMOVIDO
             del df_exp_ano, df_exp_ano_anterior, df_exp_ano_estados, df_exp_ano_anterior_estados, df_exp_ano_mg, df_exp_ano_mg_paises, df_exp_ano_anterior_mg_paises, df_exp_mun, df_exp_mun_filtrado
             
             # --- 4. Bloco de Importação ---
-            st.info(f"Processando dados de Importação (NCM) para {ano_principal} e {ano_comparacao}...")
+            # st.info(f"Processando dados de Importação (NCM) para {ano_principal} e {ano_comparacao}...") # REMOVIDO
             df_imp_ano = carregar_dataframe(url_imp_ano_principal, f"IMP_{ano_principal}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
             df_imp_ano_anterior = carregar_dataframe(url_imp_ano_comparacao, f"IMP_{ano_comparacao}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
             
@@ -792,7 +786,7 @@ if st.button(" Iniciar Geração do Relatório"):
             posicao_mg_pais_imp = calcular_posicao_estado_pais(df_imp_ano_estados, codigos_paises)
             produtos_importacao = agregar_dados_por_produto(df_imp_ano_mg_paises.copy(), df_ncm)
             
-            st.info("Processando dados de Importação (Municípios)...")
+            # st.info("Processando dados de Importação (Municípios)...") # REMOVIDO
             df_imp_mun = carregar_dataframe(url_imp_mun_principal, f"IMP_{ano_principal}_MUN.csv", usecols=MUN_COLS)
             if df_imp_mun is None:
                 st.error("Não foi possível carregar dados de importação por município. Abortando.")
@@ -801,15 +795,15 @@ if st.button(" Iniciar Geração do Relatório"):
             df_imp_mun_filtrado = df_imp_mun[(df_imp_mun['SG_UF_MUN'] == 'MG') & (df_imp_mun['CO_PAIS'].isin(codigos_paises)) & (df_imp_mun['CO_MES'].isin(meses_para_filtrar))]
             importacoes_por_municipio, total_importacoes_municipios = agregar_dados_por_municipio(df_imp_mun_filtrado)
             
-            st.info("Liberando memória de importação...")
+            # st.info("Liberando memória de importação...") # REMOVIDO
             del df_imp_ano, df_imp_ano_anterior, df_imp_ano_estados, df_imp_ano_anterior_estados, df_imp_ano_mg, df_imp_ano_mg_paises, df_imp_ano_anterior_mg_paises, df_imp_mun, df_imp_mun_filtrado
 
             # --- 6. Bloco de Cálculo Final (Balança/Fluxo) ---
-            st.info("Calculando balança comercial...")
+            # st.info("Calculando balança comercial...") # REMOVIDO
             balanca_ano, balanca_ano_anterior, fluxo_comercial_ano, fluxo_comercial_ano_anterior, variacao_balanca, variacao_fluxo = calcular_balanca_e_fluxo(exportacao_pais_ano, importacao_pais_ano, exportacao_pais_ano_anterior, importacao_pais_ano_anterior)
             
             # --- 7. Geração de Texto e Documento ---
-            st.info("Gerando documento .docx...")
+            # st.info("Gerando documento .docx...") # REMOVIDO
 
             if agrupado:
                 # --- LÓGICA PARA AGRUPADOS ---
@@ -882,7 +876,7 @@ if st.button(" Iniciar Geração do Relatório"):
                 texto_processado_ia_paragraphs = []
                 
                 if revisao_texto_gemini_ui:
-                    st.info("Chamando IA para revisar o texto...")
+                    # st.info("Chamando IA para revisar o texto...") # REMOVIDO
                     prompt_gemini = f"Agrupe todos os pontos em 5 parágrafos, relacionando por assunto. Você não pode suprimir nenhuma das informações e não pode adicionar nenhuma palavra ou texto que forneça qualquer tipo de valoração ou juízo de valor. Ou seja, sua função é apenas transformar o texto de tópicos para parágrafos. A seguir, o texto: \n{texto_relatorio}"
                     texto_processado_ia_paragraphs = chamar_gemini(prompt_gemini, api_key_ui)
                 
@@ -915,7 +909,7 @@ if st.button(" Iniciar Geração do Relatório"):
                     for paragraph in texto_processado_ia_paragraphs:
                         app.adicionar_conteudo_formatado(paragraph)
                 
-                file_bytes, file_name = app.finalizar_documento()
+                file_bytes, file_name = app.finalizar_documento() 
                 st.session_state.arquivos_gerados.append({"name": file_name, "data": file_bytes})
 
             else:
@@ -929,7 +923,7 @@ if st.button(" Iniciar Geração do Relatório"):
                     codigos_paises_loop = [obter_codigo_pais(pais)]
 
                     # --- 2. Bloco de Exportação (Separado) ---
-                    st.info(f"Processando Exportação (NCM) para {pais}...")
+                    # st.info(f"Processando Exportação (NCM) para {pais}...") # REMOVIDO
                     df_exp_ano = carregar_dataframe(url_exp_ano_principal, f"EXP_{ano_principal}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
                     df_exp_ano_anterior = carregar_dataframe(url_exp_ano_comparacao, f"EXP_{ano_comparacao}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
                     if df_exp_ano is None or df_exp_ano_anterior is None:
@@ -963,7 +957,7 @@ if st.button(" Iniciar Geração do Relatório"):
                     posicao_mg_pais_exp = calcular_posicao_estado_pais(df_exp_ano_estados, codigos_paises_loop)
                     produtos_exportacao = agregar_dados_por_produto(df_exp_ano_mg_paises.copy(), df_ncm)
                     
-                    st.info(f"Processando Exportação (Municípios) para {pais}...")
+                    # st.info(f"Processando Exportação (Municípios) para {pais}...") # REMOVIDO
                     df_exp_mun = carregar_dataframe(url_exp_mun_principal, f"EXP_{ano_principal}_MUN.csv", usecols=MUN_COLS)
                     if df_exp_mun is None:
                         st.error(f"Não foi possível carregar dados de exportação por município para {pais}.")
@@ -972,11 +966,11 @@ if st.button(" Iniciar Geração do Relatório"):
                     df_exp_mun_filtrado = df_exp_mun[(df_exp_mun['SG_UF_MUN'] == 'MG') & (df_exp_mun['CO_PAIS'].isin(codigos_paises_loop)) & (df_exp_mun['CO_MES'].isin(meses_para_filtrar))]
                     exportacoes_por_municipio, total_exportacoes_municipios = agregar_dados_por_municipio(df_exp_mun_filtrado)
                     
-                    st.info(f"Liberando memória de exportação de {pais}...")
+                    # st.info(f"Liberando memória de exportação de {pais}...") # REMOVIDO
                     del df_exp_ano, df_exp_ano_anterior, df_exp_ano_estados, df_exp_ano_mg, df_exp_ano_mg_paises, df_exp_mun, df_exp_mun_filtrado
 
                     # --- 4. Bloco de Importação (Separado) ---
-                    st.info(f"Processando Importação (NCM) para {pais}...")
+                    # st.info(f"Processando Importação (NCM) para {pais}...") # REMOVIDO
                     df_imp_ano = carregar_dataframe(url_imp_ano_principal, f"IMP_{ano_principal}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
                     df_imp_ano_anterior = carregar_dataframe(url_imp_ano_comparacao, f"IMP_{ano_comparacao}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
                     if df_imp_ano is None or df_imp_ano_anterior is None:
@@ -1008,7 +1002,7 @@ if st.button(" Iniciar Geração do Relatório"):
                     posicao_mg_pais_imp = calcular_posicao_estado_pais(df_imp_ano_estados, codigos_paises_loop)
                     produtos_importacao = agregar_dados_por_produto(df_imp_ano_mg_paises.copy(), df_ncm)
                     
-                    st.info(f"Processando Importação (Municípios) para {pais}...")
+                    # st.info(f"Processando Importação (Municípios) para {pais}...") # REMOVIDO
                     df_imp_mun = carregar_dataframe(url_imp_mun_principal, f"IMP_{ano_principal}_MUN.csv", usecols=MUN_COLS)
                     if df_imp_mun is None:
                         st.error(f"Não foi possível carregar dados de importação por município para {pais}.")
@@ -1017,15 +1011,15 @@ if st.button(" Iniciar Geração do Relatório"):
                     df_imp_mun_filtrado = df_imp_mun[(df_imp_mun['SG_UF_MUN'] == 'MG') & (df_imp_mun['CO_PAIS'].isin(codigos_paises_loop)) & (df_imp_mun['CO_MES'].isin(meses_para_filtrar))]
                     importacoes_por_municipio, total_importacoes_municipios = agregar_dados_por_municipio(df_imp_mun_filtrado)
                     
-                    st.info(f"Liberando memória de importação de {pais}...")
+                    # st.info(f"Liberando memória de importação de {pais}...") # REMOVIDO
                     del df_imp_ano, df_imp_ano_anterior, df_imp_ano_estados, df_imp_ano_mg, df_imp_ano_mg_paises, df_imp_mun, df_imp_mun_filtrado
                     
                     # --- 6. Cálculo Final (Separado) ---
-                    st.info(f"Calculando balança para {pais}...")
+                    # st.info(f"Calculando balança para {pais}...") # REMOVIDO
                     balanca_ano, balanca_ano_anterior, fluxo_comercial_ano, fluxo_comercial_ano_anterior, variacao_balanca, variacao_fluxo = calcular_balanca_e_fluxo(exportacao_pais_ano, importacao_pais_ano, exportacao_pais_ano_anterior, importacao_pais_ano_anterior)
 
                     # --- 7. Geração de Texto e Documento (Separado) ---
-                    st.info(f"Gerando documento .docx para {pais}...")
+                    # st.info(f"Gerando documento .docx para {pais}...") # REMOVIDO
                     
                     nome_pais_base = pais
 
@@ -1134,7 +1128,7 @@ if st.button(" Iniciar Geração do Relatório"):
                     # --- GEMINI ---
                     texto_processado_ia_paragraphs = None
                     if revisao_texto_gemini_ui:
-                      st.info(f"Chamando IA para revisar texto de {pais}...")
+                      # st.info(f"Chamando IA para revisar texto de {pais}...") # REMOVIDO
                       texto_relatorio = frase_1 + '\n' + frase_2 + '\n' + frase_3 + '\n' + frase_6 + '\n' + frase_7 + '\n' + frase_4 + '\n' + frase_5 + '\n' + frase_8 + '\n' + frase_9
                       prompt_gemini = f"Ajuste a ortografia e concordância das orações a seguir. Você não pode suprimir nenhuma das informações e não pode adicionar nenhuma palavra ou texto que forneça qualquer tipo de valoração ou juízo de valor. Ou seja, sua função é apenas fazer ajustes de ortografia e concordância nas orações, mantendo todas as informações. Faça o retorno em formatação simples. A seguir, as orações: \n{texto_relatorio}"
                       texto_processado_ia_paragraphs = chamar_gemini(prompt_gemini, api_key_ui)
