@@ -443,11 +443,11 @@ class DocumentoApp:
         section.top_margin = Cm(1.27)
         header = section.header
         
-        largura_total_cm = 15.88
+        largura_total_cm = 15.17
         table = header.add_table(rows=1, cols=2, width=Cm(largura_total_cm))
         table.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        table.columns[0].width = Cm(2.91)
-        table.columns[1].width = Cm(12.97)
+        table.columns[0].width = Cm(3.49)
+        table.columns[1].width = Cm(11.68)
 
         cell_imagem = table.cell(0, 0)
         paragraph_imagem = cell_imagem.paragraphs[0]
@@ -458,8 +458,8 @@ class DocumentoApp:
         if self.logo_path and os.path.exists(self.logo_path):
             try:
                 run_imagem.add_picture(self.logo_path,
-                                       width=Cm(3.5), 
-                                       height=Cm(3.42))
+                                       width=Cm(3.49), 
+                                       height=Cm(3.94))
             except Exception as e:
                 # st.error(f"Erro ao adicionar imagem do logo ao Docx: {e}") # Log removido
                 paragraph_imagem.add_run("[Logo não encontrado]")
@@ -1103,6 +1103,7 @@ with col1:
 with col2:
     # Coluna 2 (maior) agora contém o texto
     st.caption("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
+
 
 
 
