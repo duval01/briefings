@@ -64,7 +64,6 @@ def ler_dados_csv_online(url, usecols=None, dtypes=None):
                              usecols=usecols)
             return df
         except requests.exceptions.RequestException as e:
-            # Mantém logs de erro para o usuário
             st.error(f"Erro ao acessar o CSV (tentativa {attempt + 1}/{retries}): {e}")
             if "Read timed out" in str(e) and attempt < retries - 1:
                 st.warning("Download demorou muito. Tentando novamente...")
@@ -80,24 +79,31 @@ def ler_dados_csv_online(url, usecols=None, dtypes=None):
             return None
     return None
 
+# --- ALTERAÇÃO AQUI: Adicionado 'mostrar_progresso=True' ---
 @st.cache_data(ttl=3600)
-def carregar_dataframe(url, nome_arquivo, usecols=None, dtypes=None):
+def carregar_dataframe(url, nome_arquivo, usecols=None, dtypes=None, mostrar_progresso=True):
     """Carrega o DataFrame da URL (usa cache) com colunas e dtypes."""
-    # --- ALTERAÇÃO AQUI: Remove st.progress ---
-    # progress_bar = st.progress(0, text=f"Carregando {nome_arquivo}...")
+    progress_bar = None
+    if mostrar_progresso: # Só mostra a barra se for instruído
+        progress_bar = st.progress(0, text=f"Carregando {nome_arquivo}...")
+    
     df = ler_dados_csv_online(url, usecols=usecols, dtypes=dtypes)
-    # if df is not None:
-    #     progress_bar.progress(100, text=f"{nome_arquivo} carregado com sucesso.")
-    # else:
-    #     progress_bar.empty()
-    # --- FIM DA ALTERAÇÃO ---
+    
+    if mostrar_progresso and progress_bar: # Só atualiza a barra se ela existir
+        if df is not None:
+            progress_bar.progress(100, text=f"{nome_arquivo} carregado com sucesso.")
+        else:
+            progress_bar.empty()
     return df
+# --- FIM DA ALTERAÇÃO ---
 
 @st.cache_data
 def obter_dados_paises():
     """Carrega a tabela de países (ID e Nome) e armazena em cache."""
     url_pais = "https://balanca.economia.gov.br/balanca/bd/tabelas/PAIS.csv"
-    df_pais = carregar_dataframe(url_pais, "PAIS.csv", usecols=['NO_PAIS', 'CO_PAIS'])
+    # --- ALTERAÇÃO AQUI: 'mostrar_progresso=False' para esta chamada ---
+    df_pais = carregar_dataframe(url_pais, "PAIS.csv", usecols=['NO_PAIS', 'CO_PAIS'], mostrar_progresso=False) 
+    # --- FIM DA ALTERAÇÃO ---
     if df_pais is not None and not df_pais.empty:
         return df_pais
     return None
@@ -291,10 +297,8 @@ def obter_artigo_pais_gemini(nome_pais, api_key):
         st.warning("Função de Artigo: API Key do Gemini não configurada nos 'Secrets'.")
         return None
         
-    # --- ALTERAÇÃO AQUI: Remove st.info ---
-    # st.info(f"Consultando IA para obter o artigo de '{nome_pais}'...")
+    # st.info(f"Consultando IA para obter o artigo de '{nome_pais}'...") # Log removido
     
-    # Prompt melhorado para artigos
     prompt = f"""Qual o artigo definido (o, a, os, as) correto para se referir ao país "{nome_pais}"? 
     Responda APENAS com o artigo.
     Por exemplo:
@@ -547,8 +551,7 @@ class DocumentoApp:
         
         try:
             self.doc.save(caminho_completo)
-            # --- ALTERAÇÃO AQUI: Remove st.info ---
-            # st.info(f"Salvo no servidor em: {caminho_completo}")
+            # st.info(f"Salvo no servidor em: {caminho_completo}") # Log removido
         except Exception:
             pass 
 
@@ -560,7 +563,7 @@ class DocumentoApp:
 # --- ----------------------------------- ---
 
 st.set_page_config(page_title="Gerador de Briefings ComexStat", layout="wide")
-st.title(" Gerador de Briefings | AEST")
+st.title(" automação de Briefings ComexStat")
 
 # --- Inicialização do Session State ---
 if 'arquivos_gerados' not in st.session_state:
@@ -668,7 +671,6 @@ if st.button(" Iniciar Geração do Relatório"):
             url_uf_mun = "https://balanca.economia.gov.br/balanca/bd/tabelas/UF_MUN.csv"
             
             # --- 1. Carregar dados comuns (pequenos) ---
-            # st.info("Carregando tabelas auxiliares (NCM, UF)...") # REMOVIDO
             df_ncm = carregar_dataframe(url_ncm, "NCM_SH.csv", usecols=['CO_SH4', 'NO_SH4_POR'])
             df_uf_mun = carregar_dataframe(url_uf_mun, "UF_MUN.csv", usecols=['CO_MUN_GEO', 'NO_MUN_MIN'])
             
@@ -677,7 +679,6 @@ if st.button(" Iniciar Geração do Relatório"):
                 st.stop()
 
             # --- 2. Bloco de Exportação ---
-            # st.info(f"Processando dados de Exportação (NCM) para {ano_principal} e {ano_comparacao}...") # REMOVIDO
             df_exp_ano = carregar_dataframe(url_exp_ano_principal, f"EXP_{ano_principal}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
             df_exp_ano_anterior = carregar_dataframe(url_exp_ano_comparacao, f"EXP_{ano_comparacao}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
 
@@ -735,7 +736,6 @@ if st.button(" Iniciar Geração do Relatório"):
             produtos_exportacao = agregar_dados_por_produto(df_exp_ano_mg_paises.copy(), df_ncm)
             
             # --- 2b. Municípios Exportação ---
-            # st.info("Processando dados de Exportação (Municípios)...") # REMOVIDO
             df_exp_mun = carregar_dataframe(url_exp_mun_principal, f"EXP_{ano_principal}_MUN.csv", usecols=MUN_COLS)
             if df_exp_mun is None:
                 st.error("Não foi possível carregar dados de exportação por município. Abortando.")
@@ -745,11 +745,9 @@ if st.button(" Iniciar Geração do Relatório"):
             exportacoes_por_municipio, total_exportacoes_municipios = agregar_dados_por_municipio(df_exp_mun_filtrado)
             
             # --- 3. Liberar Memória (Exportação) ---
-            # st.info("Liberando memória de exportação...") # REMOVIDO
             del df_exp_ano, df_exp_ano_anterior, df_exp_ano_estados, df_exp_ano_anterior_estados, df_exp_ano_mg, df_exp_ano_mg_paises, df_exp_ano_anterior_mg_paises, df_exp_mun, df_exp_mun_filtrado
             
             # --- 4. Bloco de Importação ---
-            # st.info(f"Processando dados de Importação (NCM) para {ano_principal} e {ano_comparacao}...") # REMOVIDO
             df_imp_ano = carregar_dataframe(url_imp_ano_principal, f"IMP_{ano_principal}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
             df_imp_ano_anterior = carregar_dataframe(url_imp_ano_comparacao, f"IMP_{ano_comparacao}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
             
@@ -786,7 +784,6 @@ if st.button(" Iniciar Geração do Relatório"):
             posicao_mg_pais_imp = calcular_posicao_estado_pais(df_imp_ano_estados, codigos_paises)
             produtos_importacao = agregar_dados_por_produto(df_imp_ano_mg_paises.copy(), df_ncm)
             
-            # st.info("Processando dados de Importação (Municípios)...") # REMOVIDO
             df_imp_mun = carregar_dataframe(url_imp_mun_principal, f"IMP_{ano_principal}_MUN.csv", usecols=MUN_COLS)
             if df_imp_mun is None:
                 st.error("Não foi possível carregar dados de importação por município. Abortando.")
@@ -795,16 +792,12 @@ if st.button(" Iniciar Geração do Relatório"):
             df_imp_mun_filtrado = df_imp_mun[(df_imp_mun['SG_UF_MUN'] == 'MG') & (df_imp_mun['CO_PAIS'].isin(codigos_paises)) & (df_imp_mun['CO_MES'].isin(meses_para_filtrar))]
             importacoes_por_municipio, total_importacoes_municipios = agregar_dados_por_municipio(df_imp_mun_filtrado)
             
-            # st.info("Liberando memória de importação...") # REMOVIDO
             del df_imp_ano, df_imp_ano_anterior, df_imp_ano_estados, df_imp_ano_anterior_estados, df_imp_ano_mg, df_imp_ano_mg_paises, df_imp_ano_anterior_mg_paises, df_imp_mun, df_imp_mun_filtrado
 
             # --- 6. Bloco de Cálculo Final (Balança/Fluxo) ---
-            # st.info("Calculando balança comercial...") # REMOVIDO
             balanca_ano, balanca_ano_anterior, fluxo_comercial_ano, fluxo_comercial_ano_anterior, variacao_balanca, variacao_fluxo = calcular_balanca_e_fluxo(exportacao_pais_ano, importacao_pais_ano, exportacao_pais_ano_anterior, importacao_pais_ano_anterior)
             
             # --- 7. Geração de Texto e Documento ---
-            # st.info("Gerando documento .docx...") # REMOVIDO
-
             if agrupado:
                 # --- LÓGICA PARA AGRUPADOS ---
                 app = DocumentoApp(logo_path=logo_path_to_use)
@@ -1219,4 +1212,3 @@ with col1:
 with col2:
     # Coluna 2 (maior) agora contém o texto
     st.caption("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
-
