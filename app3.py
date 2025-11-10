@@ -560,7 +560,7 @@ class DocumentoApp:
 # --- ----------------------------------- ---
 
 st.set_page_config(page_title="Gerador de Briefings ComexStat", layout="wide")
-st.title(" automação de Briefings ComexStat")
+st.title(" Gerador de Briefings | AEST")
 
 # --- Inicialização do Session State ---
 if 'arquivos_gerados' not in st.session_state:
@@ -1219,3 +1219,4 @@ with col1:
 with col2:
     # Coluna 2 (maior) agora contém o texto
     st.caption("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
+
