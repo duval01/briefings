@@ -16,7 +16,7 @@ import json
 from google.api_core.client_options import ClientOptions
 from googleapiclient import discovery
 import io
-import zipfile  # <--- IMPORTADO AQUI
+import zipfile
 
 # --- CONFIGURAÇÕES GLOBAIS E CONSTANTES ---
 
@@ -29,22 +29,43 @@ meses_pt = {
     7: "julho", 8: "agosto", 9: "setembro", 10: "outubro", 11: "novembro", 12: "dezembro"
 }
 
-# --- FUNÇÕES DE LÓGICA (DO SCRIPT ORIGINAL) ---
+# --- LISTAS DE COLUNAS PARA OTIMIZAÇÃO ---
+# Define apenas as colunas que realmente precisamos dos arquivos gigantes
+NCM_COLS = ['VL_FOB', 'CO_PAIS', 'CO_MES', 'SG_UF_NCM', 'CO_NCM']
+NCM_DTYPES = {'CO_NCM': str, 'CO_SH4': str} # Dtypes para colunas de string
 
-@st.cache_data(ttl=3600)  # Adiciona cache para performance
-def ler_dados_csv_online(url):
-    """Lê dados CSV da URL com retentativas."""
+MUN_COLS = ['VL_FOB', 'CO_PAIS', 'CO_MES', 'SG_UF_MUN', 'CO_MUN']
+MUN_DTYPES = {'CO_MUN': str}
+
+
+# --- FUNÇÕES DE LÓGICA (OTIMIZADAS) ---
+
+@st.cache_data(ttl=3600)
+def ler_dados_csv_online(url, usecols=None, dtypes=None): # <--- Assinatura alterada
+    """Lê dados CSV da URL com retentativas e colunas/dtypes específicos."""
     retries = 3
     for attempt in range(retries):
         try:
-            resposta = requests.get(url, verify=False, timeout=(10, 1200))
+            # Mantém o timeout longo de 20 minutos
+            resposta = requests.get(url, verify=False, timeout=(10, 1200)) 
             resposta.raise_for_status()
+            
+            # Usa os dtypes padrão e atualiza com os específicos (se houver)
+            final_dtypes = {'CO_SH4': str, 'CO_NCM': str}
+            if dtypes:
+                final_dtypes.update(dtypes)
+
             df = pd.read_csv(StringIO(resposta.content.decode('latin-1')), encoding='latin-1',
-                             sep=';', dtype={'CO_SH4': str, 'CO_NCM': str})
+                             sep=';', 
+                             dtype=final_dtypes, # Usa dtypes
+                             usecols=usecols)     # Usa usecols
             return df
         except requests.exceptions.RequestException as e:
             st.error(f"Erro ao acessar o CSV (tentativa {attempt + 1}/{retries}): {e}")
-            if attempt < retries - 1 and "IncompleteRead" in str(e):
+            if "Read timed out" in str(e) and attempt < retries - 1:
+                st.warning("Download demorou muito. Tentando novamente...")
+                continue
+            if "IncompleteRead" in str(e) and attempt < retries - 1:
                 st.warning("Retentando download...")
                 continue
             else:
@@ -55,11 +76,11 @@ def ler_dados_csv_online(url):
             return None
     return None
 
-@st.cache_data(ttl=3600) # Adiciona cache para performance
-def carregar_dataframe(url, nome_arquivo):
-    """Carrega o DataFrame da URL (usa cache)."""
+@st.cache_data(ttl=3600)
+def carregar_dataframe(url, nome_arquivo, usecols=None, dtypes=None): # <--- Assinatura alterada
+    """Carrega o DataFrame da URL (usa cache) com colunas e dtypes."""
     progress_bar = st.progress(0, text=f"Carregando {nome_arquivo}...")
-    df = ler_dados_csv_online(url)
+    df = ler_dados_csv_online(url, usecols=usecols, dtypes=dtypes) # <--- Passa adiante
     if df is not None:
         progress_bar.progress(100, text=f"{nome_arquivo} carregado com sucesso.")
     else:
@@ -70,7 +91,8 @@ def carregar_dataframe(url, nome_arquivo):
 def obter_codigo_pais(nome_pais):
     """Obtém o código do país a partir do nome."""
     url_pais = "https://balanca.economia.gov.br/balanca/bd/tabelas/PAIS.csv"
-    df_pais = carregar_dataframe(url_pais, "PAIS.csv")
+    # Otimizado: carrega apenas as colunas necessárias
+    df_pais = carregar_dataframe(url_pais, "PAIS.csv", usecols=['NO_PAIS', 'CO_PAIS']) 
     if df_pais is not None and not df_pais.empty:
         filtro_pais = df_pais[df_pais['NO_PAIS'] == nome_pais]
         if not filtro_pais.empty:
@@ -115,8 +137,6 @@ def filtrar_dados_por_mg_e_pais(df, codigos_paises, agrupado, ultimo_mes_disponi
     if not ano_completo:
         df_filtrado = df_filtrado[df_filtrado['CO_MES'] <= ultimo_mes_disponivel]
     return df_filtrado
-
-# --- REMOVIDA A FUNÇÃO filtrar_dados_municipios (lógica movida para o main) ---
 
 def calcular_soma_por_estado(df, ano, ano_completo, ultimo_mes_disponivel, df_anterior=None):
     """Calcula a soma dos valores por estado para o ano e, opcionalmente, para o ano anterior."""
@@ -249,9 +269,6 @@ def agregar_dados_por_produto(df, df_ncm, ano_completo, ultimo_mes_disponivel):
             produtos_nomes[f"Produto NCM {sh4_code} não encontrado"] = valor
 
     return produtos_nomes
-
-
-# --- REMOVIDA A FUNÇÃO calcular_fluxo_comercial (lógica movida para o main) ---
 
 
 # --- FUNÇÕES DE IA (Refatoradas para aceitar api_key) ---
@@ -629,8 +646,8 @@ if st.button(" Iniciar Geração do Relatório"):
             
             # --- 1. Carregar dados comuns (pequenos) ---
             st.info("Carregando tabelas auxiliares (NCM, UF)...")
-            df_ncm = carregar_dataframe(url_ncm, "NCM_SH.csv")
-            df_uf_mun = carregar_dataframe(url_uf_mun, "UF_MUN.csv")
+            df_ncm = carregar_dataframe(url_ncm, "NCM_SH.csv", usecols=['CO_SH4', 'NO_SH4_POR'])
+            df_uf_mun = carregar_dataframe(url_uf_mun, "UF_MUN.csv", usecols=['CO_MUN_GEO', 'NO_MUN_MIN'])
             
             if df_ncm is None or df_uf_mun is None:
                 st.error("Não foi possível carregar tabelas auxiliares. Abortando.")
@@ -638,8 +655,8 @@ if st.button(" Iniciar Geração do Relatório"):
 
             # --- 2. Bloco de Exportação ---
             st.info("Processando dados de Exportação (NCM)...")
-            df_exp_ano = carregar_dataframe(url_exp_ano, f"EXP_{ano_selecionado}.csv")
-            df_exp_ano_anterior = carregar_dataframe(url_exp_ano_anterior, f"EXP_{ano_selecionado - 1}.csv")
+            df_exp_ano = carregar_dataframe(url_exp_ano, f"EXP_{ano_selecionado}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
+            df_exp_ano_anterior = carregar_dataframe(url_exp_ano_anterior, f"EXP_{ano_selecionado - 1}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
 
             if df_exp_ano is None or df_exp_ano_anterior is None:
                 st.error("Não foi possível carregar dados de exportação. Abortando.")
@@ -692,7 +709,7 @@ if st.button(" Iniciar Geração do Relatório"):
             
             # --- 2b. Municípios Exportação ---
             st.info("Processando dados de Exportação (Municípios)...")
-            df_exp_mun = carregar_dataframe(url_exp_mun, f"EXP_{ano_selecionado}_MUN.csv")
+            df_exp_mun = carregar_dataframe(url_exp_mun, f"EXP_{ano_selecionado}_MUN.csv", usecols=MUN_COLS)
             if df_exp_mun is None:
                 st.error("Não foi possível carregar dados de exportação por município. Abortando.")
                 st.stop()
@@ -708,8 +725,8 @@ if st.button(" Iniciar Geração do Relatório"):
             
             # --- 4. Bloco de Importação ---
             st.info("Processando dados de Importação (NCM)...")
-            df_imp_ano = carregar_dataframe(url_imp_ano, f"IMP_{ano_selecionado}.csv")
-            df_imp_ano_anterior = carregar_dataframe(url_imp_ano_anterior, f"IMP_{ano_selecionado - 1}.csv")
+            df_imp_ano = carregar_dataframe(url_imp_ano, f"IMP_{ano_selecionado}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
+            df_imp_ano_anterior = carregar_dataframe(url_imp_ano_anterior, f"IMP_{ano_selecionado - 1}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
             
             if df_imp_ano is None or df_imp_ano_anterior is None:
                 st.error("Não foi possível carregar dados de importação. Abortando.")
@@ -758,7 +775,7 @@ if st.button(" Iniciar Geração do Relatório"):
             
             # --- 4b. Municípios Importação ---
             st.info("Processando dados de Importação (Municípios)...")
-            df_imp_mun = carregar_dataframe(url_imp_mun, f"IMP_{ano_selecionado}_MUN.csv")
+            df_imp_mun = carregar_dataframe(url_imp_mun, f"IMP_{ano_selecionado}_MUN.csv", usecols=MUN_COLS)
             if df_imp_mun is None:
                 st.error("Não foi possível carregar dados de importação por município. Abortando.")
                 st.stop()
@@ -936,8 +953,8 @@ if st.button(" Iniciar Geração do Relatório"):
 
                     # --- 2. Bloco de Exportação (Separado) ---
                     st.info(f"Processando Exportação (NCM) para {pais}...")
-                    df_exp_ano = carregar_dataframe(url_exp_ano, f"EXP_{ano_selecionado}.csv")
-                    df_exp_ano_anterior = carregar_dataframe(url_exp_ano_anterior, f"EXP_{ano_selecionado - 1}.csv")
+                    df_exp_ano = carregar_dataframe(url_exp_ano, f"EXP_{ano_selecionado}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
+                    df_exp_ano_anterior = carregar_dataframe(url_exp_ano_anterior, f"EXP_{ano_selecionado - 1}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
                     if df_exp_ano is None or df_exp_ano_anterior is None:
                         st.error(f"Não foi possível carregar dados de exportação para {pais}.")
                         continue
@@ -979,7 +996,7 @@ if st.button(" Iniciar Geração do Relatório"):
                     produtos_exportacao = agregar_dados_por_produto(df_exp_ano_mg_paises.copy(), df_ncm, ano_completo, ultimo_mes_disponivel)
                     
                     st.info(f"Processando Exportação (Municípios) para {pais}...")
-                    df_exp_mun = carregar_dataframe(url_exp_mun, f"EXP_{ano_selecionado}_MUN.csv")
+                    df_exp_mun = carregar_dataframe(url_exp_mun, f"EXP_{ano_selecionado}_MUN.csv", usecols=MUN_COLS)
                     if df_exp_mun is None:
                         st.error(f"Não foi possível carregar dados de exportação por município para {pais}.")
                         continue
@@ -994,8 +1011,8 @@ if st.button(" Iniciar Geração do Relatório"):
 
                     # --- 4. Bloco de Importação (Separado) ---
                     st.info(f"Processando Importação (NCM) para {pais}...")
-                    df_imp_ano = carregar_dataframe(url_imp_ano, f"IMP_{ano_selecionado}.csv")
-                    df_imp_ano_anterior = carregar_dataframe(url_imp_ano_anterior, f"IMP_{ano_selecionado - 1}.csv")
+                    df_imp_ano = carregar_dataframe(url_imp_ano, f"IMP_{ano_selecionado}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
+                    df_imp_ano_anterior = carregar_dataframe(url_imp_ano_anterior, f"IMP_{ano_selecionado - 1}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
                     if df_imp_ano is None or df_imp_ano_anterior is None:
                         st.error(f"Não foi possível carregar dados de importação para {pais}.")
                         continue
@@ -1034,7 +1051,7 @@ if st.button(" Iniciar Geração do Relatório"):
                     produtos_importacao = agregar_dados_por_produto(df_imp_ano_mg_paises.copy(), df_ncm, ano_completo, ultimo_mes_disponivel)
                     
                     st.info(f"Processando Importação (Municípios) para {pais}...")
-                    df_imp_mun = carregar_dataframe(url_imp_mun, f"IMP_{ano_selecionado}_MUN.csv")
+                    df_imp_mun = carregar_dataframe(url_imp_mun, f"IMP_{ano_selecionado}_MUN.csv", usecols=MUN_COLS)
                     if df_imp_mun is None:
                         st.error(f"Não foi possível carregar dados de importação por município para {pais}.")
                         continue
@@ -1205,10 +1222,10 @@ if st.button(" Iniciar Geração do Relatório"):
                     # --- GEMINI ---
                     texto_processado_ia_paragraphs = None
                     if revisao_texto_gemini_ui:
-                        st.info(f"Chamando IA para revisar texto de {pais}...")
-                        texto_relatorio = frase_1 + '\n' + frase_2 + '\n' + frase_3 + '\n' + frase_6 + '\n' + frase_7 + '\n' + frase_4 + '\n' + frase_5 + '\n' + frase_8 + '\n' + frase_9
-                        prompt_gemini = f"Ajuste a ortografia e concordância das orações a seguir. Você não pode suprimir nenhuma das informações e não pode adicionar nenhuma palavra ou texto que forneça qualquer tipo de valoração ou juízo de valor. Ou seja, sua função é apenas fazer ajustes de ortografia e concordância nas orações, mantendo todas as informações. Faça o retorno em formatação simples. A seguir, as orações: \n{texto_relatorio}"
-                        texto_processado_ia_paragraphs = chamar_gemini(prompt_gemini, api_key_ui)
+                      st.info(f"Chamando IA para revisar texto de {pais}...")
+                      texto_relatorio = frase_1 + '\n' + frase_2 + '\n' + frase_3 + '\n' + frase_6 + '\n' + frase_7 + '\n' + frase_4 + '\n' + frase_5 + '\n' + frase_8 + '\n' + frase_9
+                      prompt_gemini = f"Ajuste a ortografia e concordância das orações a seguir. Você não pode suprimir nenhuma das informações e não pode adicionar nenhuma palavra ou texto que forneça qualquer tipo de valoração ou juízo de valor. Ou seja, sua função é apenas fazer ajustes de ortografia e concordância nas orações, mantendo todas as informações. Faça o retorno em formatação simples. A seguir, as orações: \n{texto_relatorio}"
+                      texto_processado_ia_paragraphs = chamar_gemini(prompt_gemini, api_key_ui)
                     
                     # --- Montagem do Documento ---
                     app.set_titulo(titulo_documento)
