@@ -12,9 +12,6 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 import re
-import json
-from google.api_core.client_options import ClientOptions
-from googleapiclient import discovery
 import io
 import zipfile
 
@@ -34,6 +31,40 @@ MESES_MAPA = {
     "Julho": 7, "Agosto": 8, "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12
 }
 LISTA_MESES = list(MESES_MAPA.keys())
+
+# --- ALTERAÇÃO AQUI: Mapa de Artigos Nativo ---
+ARTIGOS_PAISES_MAP = {
+    "Estados Unidos": "os",
+    "China": "a",
+    "Argentina": "a",
+    "Japão": "o",
+    "Alemanha": "a",
+    "França": "a",
+    "Itália": "a",
+    "Reino Unido": "o",
+    "Canadá": "o",
+    "México": "o",
+    "Índia": "a",
+    "Rússia": "a",
+    "Coreia do Sul": "a",
+    "Emirados Árabes Unidos": "os",
+    "Países Baixos": "os",
+    "Afeganistão": "o",
+    "Espanha": "a",
+    "Portugal": "o",
+    "Chile": "o",
+    "Colômbia": "a",
+    "Peru": "o",
+    "Austrália": "a",
+    "África do Sul": "a",
+    "Arábia Saudita": "a",
+    "Filipinas": "as",
+    "Vietnã": "o",
+    "Singapura": "a",
+    "Indonésia": "a",
+    "Malásia": "a"
+}
+# --- FIM DA ALTERAÇÃO ---
 
 # --- LISTAS DE COLUNAS PARA OTIMIZAÇÃO ---
 NCM_COLS = ['VL_FOB', 'CO_PAIS', 'CO_MES', 'SG_UF_NCM', 'CO_NCM']
@@ -79,43 +110,39 @@ def ler_dados_csv_online(url, usecols=None, dtypes=None):
             return None
     return None
 
-# --- ALTERAÇÃO AQUI: Adicionado 'mostrar_progresso=True' ---
 @st.cache_data(ttl=3600)
 def carregar_dataframe(url, nome_arquivo, usecols=None, dtypes=None, mostrar_progresso=True):
     """Carrega o DataFrame da URL (usa cache) com colunas e dtypes."""
     progress_bar = None
-    if mostrar_progresso: # Só mostra a barra se for instruído
+    if mostrar_progresso: 
         progress_bar = st.progress(0, text=f"Carregando {nome_arquivo}...")
     
     df = ler_dados_csv_online(url, usecols=usecols, dtypes=dtypes)
     
-    if mostrar_progresso and progress_bar: # Só atualiza a barra se ela existir
+    if mostrar_progresso and progress_bar: 
         if df is not None:
             progress_bar.progress(100, text=f"{nome_arquivo} carregado com sucesso.")
         else:
             progress_bar.empty()
     return df
-# --- FIM DA ALTERAÇÃO ---
 
 @st.cache_data
 def obter_dados_paises():
     """Carrega a tabela de países (ID e Nome) e armazena em cache."""
     url_pais = "https://balanca.economia.gov.br/balanca/bd/tabelas/PAIS.csv"
-    # --- ALTERAÇÃO AQUI: 'mostrar_progresso=False' para esta chamada ---
     df_pais = carregar_dataframe(url_pais, "PAIS.csv", usecols=['NO_PAIS', 'CO_PAIS'], mostrar_progresso=False) 
-    # --- FIM DA ALTERAÇÃO ---
     if df_pais is not None and not df_pais.empty:
         return df_pais
     return None
 
 def obter_lista_de_paises():
     """Retorna uma lista de nomes de países válidos."""
-    df_pais = obter_dados_paises() # Usa a função cacheada
+    df_pais = obter_dados_paises() 
     if df_pais is not None:
         lista_paises = df_pais[df_pais['NO_PAIS'] != "Brasil"]['NO_PAIS'].unique().tolist()
         lista_paises.sort()
         return lista_paises
-    return ["Erro ao carregar lista de países"] # Fallback
+    return ["Erro ao carregar lista de países"] 
 
 def obter_codigo_pais(nome_pais):
     """Obtém o código do país a partir do nome, usando o DF cacheado."""
@@ -128,7 +155,7 @@ def obter_codigo_pais(nome_pais):
 
 def validar_paises(paises_selecionados):
     """Valida a lista de países e retorna códigos e nomes válidos."""
-    df_pais = obter_dados_paises() # Pega o DF cacheado
+    df_pais = obter_dados_paises() 
     if df_pais is None:
         st.error("Falha ao carregar dados dos países.")
         return [], [], []
@@ -137,7 +164,6 @@ def validar_paises(paises_selecionados):
     nomes_paises_validos = []
     paises_invalidos = []
 
-    # Cria um mapa de Nome -> Código para busca rápida
     mapa_paises = pd.Series(df_pais.CO_PAIS.values, index=df_pais.NO_PAIS).to_dict()
 
     for pais in paises_selecionados:
@@ -145,7 +171,7 @@ def validar_paises(paises_selecionados):
             paises_invalidos.append(f"{pais} (Não é possível fazer busca no Brasil)")
             continue
         
-        codigo_pais = mapa_paises.get(pais) # Busca no mapa
+        codigo_pais = mapa_paises.get(pais) 
         
         if codigo_pais is None:
             paises_invalidos.append(f"{pais} (País não encontrado)")
@@ -288,77 +314,9 @@ def agregar_dados_por_produto(df, df_ncm):
     return produtos_nomes
 
 
-# --- FUNÇÕES DE IA (Refatoradas para aceitar api_key) ---
+# --- FUNÇÕES DE IA (REMOVIDAS) ---
+# ... (obter_artigo_pais_gemini e chamar_gemini foram removidas) ...
 
-@st.cache_data
-def obter_artigo_pais_gemini(nome_pais, api_key):
-    """Chama a API do Gemini para obter o artigo de um país."""
-    if not api_key:
-        st.warning("Função de Artigo: API Key do Gemini não configurada nos 'Secrets'.")
-        return None
-        
-    # st.info(f"Consultando IA para obter o artigo de '{nome_pais}'...") # Log removido
-    
-    prompt = f"""Qual o artigo definido (o, a, os, as) correto para se referir ao país "{nome_pais}"? 
-    Responda APENAS com o artigo.
-    Por exemplo:
-    - Para "Brasil" responda "o"
-    - Para "China" responda "a"
-    - Para "Estados Unidos" responda "os"
-    - Para "Filipinas" responda "as"
-    """
-
-    url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=' + api_key
-    headers = {'Content-Type': 'application/json'}
-    data = {'contents': [{'parts': [{'text': prompt}]}]}
-
-    try:
-        resposta = requests.post(url, headers=headers, json=data, timeout=20)
-        resposta.raise_for_status()
-
-        conteudo_resposta = resposta.json()
-        if 'candidates' in conteudo_resposta and conteudo_resposta['candidates']:
-            texto_bruto = conteudo_resposta['candidates'][0]['content']['parts'][0]['text']
-            artigo = texto_bruto.strip().replace('.', '').lower()
-            if artigo in ['o', 'a', 'os', 'as']:
-                return artigo
-            else:
-                st.warning(f"IA retornou um artigo inválido ('{artigo}') para '{nome_pais}'.")
-                return None
-        else:
-            st.warning("A API não retornou um candidato válido para o artigo.")
-            return None
-    except requests.exceptions.RequestException as e:
-        st.error(f"Erro na chamada da API para obter artigo: {e}")
-        return None
-
-
-@st.cache_data
-def chamar_gemini(texto, api_key):
-    """Chama a API do Google Gemini para processar o texto."""
-    if not api_key:
-        st.warning("Função de Revisão: API Key do Gemini não configurada nos 'Secrets'.")
-        return [texto] # Retorna o texto original em parágrafos
-        
-    url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=' + api_key
-    headers = {'Content-Type': 'application/json'}
-    data = {'contents': [{'parts': [{'text': texto}]}]}
-
-    try:
-        resposta = requests.post(url, headers=headers, json=data, timeout=60)
-        resposta.raise_for_status()
-
-        conteudo_resposta = resposta.json()
-        if conteudo_resposta.get('candidates'):
-            texto_processado = conteudo_resposta['candidates'][0]['content']['parts'][0]['text']
-            paragraphs = texto_processado.split('\n\n')
-            return [p.strip() for p in paragraphs if p.strip()]
-        else:
-            st.warning("A API não retornou nenhuma informação. Retornando texto original.")
-            return [texto]
-    except requests.exceptions.RequestException as e:
-        st.error(f"Erro na chamada da API principal: {e}")
-        return [texto]
 
 # --- FUNÇÕES DE FORMATAÇÃO E UTILITÁRIOS ---
 
@@ -368,23 +326,19 @@ def formatar_valor(valor):
         prefixo = "-"
         valor = abs(valor)
 
-    # Bilhões
     if valor >= 999_500_000:
         valor_em_bilhoes = round(valor / 1_000_000_000, 2)
         valor_formatado_str = f"{valor_em_bilhoes:,.2f}"
         unidade = "bilhão" if valor_em_bilhoes < 2 else "bilhões"
         resultado = f"US$ {valor_formatado_str} {unidade}"
-    # Milhões
     elif valor >= 999_500:
         valor_em_milhoes = round(valor / 1_000_000, 2)
         valor_formatado_str = f"{valor_em_milhoes:,.2f}"
         unidade = "milhão" if valor_em_milhoes < 2 else "milhões"
         resultado = f"US$ {valor_formatado_str} {unidade}"
-    # Mil
     elif valor >= 1_000:
         valor_formatado_str = f"{valor / 1_000:,.1f}"
         resultado = f"US$ {valor_formatado_str} mil"
-    # Menor que 1.000
     else:
         resultado = f"US$ {valor:.0f}"
 
@@ -461,11 +415,15 @@ class DocumentoApp:
         section = self.doc.sections[0]
         section.top_margin = Cm(1.27)
         header = section.header
-        largura_total_cm = 15.88
+        
+        # --- ALTERAÇÃO AQUI: Ajuste de largura da tabela e colunas ---
+        largura_total_cm = 16.0 # Um pouco maior que o padrão
         table = header.add_table(rows=1, cols=2, width=Cm(largura_total_cm))
         table.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        table.columns[0].width = Cm(2.91)
-        table.columns[1].width = Cm(12.97)
+        table.columns[0].width = Cm(4.0) # Coluna da logo maior
+        table.columns[1].width = Cm(12.0) # Coluna de texto maior
+        # --- FIM DA ALTERAÇÃO ---
+
         cell_imagem = table.cell(0, 0)
         paragraph_imagem = cell_imagem.paragraphs[0]
         paragraph_imagem.paragraph_format.space_before = Pt(0)
@@ -474,9 +432,13 @@ class DocumentoApp:
         run_imagem = paragraph_imagem.add_run()
         if self.logo_path and os.path.exists(self.logo_path):
             try:
+                # --- ALTERAÇÃO AQUI: Aumenta o tamanho da logo ---
+                # Proporção original: 1.71 L x 1.67 A
+                # Nova largura: 3.5cm. Nova altura: (3.5 / 1.71) * 1.67 = 3.42cm
                 run_imagem.add_picture(self.logo_path,
-                                       width=Inches(1.71 / 2.54),
-                                       height=Inches(1.67 / 2.54))
+                                       width=Cm(3.5), 
+                                       height=Cm(3.42))
+                # --- FIM DA ALTERAÇÃO ---
             except Exception as e:
                 st.error(f"Erro ao adicionar imagem do logo ao Docx: {e}")
                 paragraph_imagem.add_run("[Logo não encontrado]")
@@ -493,8 +455,6 @@ class DocumentoApp:
             "Superintendência de Atração de Investimentos e Estímulo à Exportação"
         ]
         
-        # --- Formatação de cabeçalho explícita ---
-        
         def formatar_paragrafo_cabecalho(p):
             p.paragraph_format.space_before = Pt(0)
             p.paragraph_format.space_after = Pt(0)
@@ -508,7 +468,7 @@ class DocumentoApp:
         run = p.add_run(textos[0])
         run.font.name = 'Times New Roman'
         run.font.size = Pt(11)
-        run.bold = True # Linha 1: BOLD
+        run.bold = True 
 
         # Linha 2: "SECRETARIA DE ESTADO..."
         p = cell_texto.add_paragraph()
@@ -516,7 +476,7 @@ class DocumentoApp:
         run = p.add_run(textos[1])
         run.font.name = 'Times New Roman'
         run.font.size = Pt(11)
-        run.bold = True # Linha 2: BOLD
+        run.bold = True
         
         # Linhas 3 e 4 (Subsecretaria, Superintendência)
         for texto in textos[2:]: 
@@ -525,8 +485,7 @@ class DocumentoApp:
             run = p.add_run(texto)
             run.font.name = 'Times New Roman'
             run.font.size = Pt(11)
-            run.bold = False # Linhas 3 e 4: REGULAR
-        # --- Fim da formatação ---
+            run.bold = False 
 
     def finalizar_documento(self):
         """Salva o documento em memória e retorna."""
@@ -551,7 +510,6 @@ class DocumentoApp:
         
         try:
             self.doc.save(caminho_completo)
-            # st.info(f"Salvo no servidor em: {caminho_completo}") # Log removido
         except Exception:
             pass 
 
@@ -563,7 +521,7 @@ class DocumentoApp:
 # --- ----------------------------------- ---
 
 st.set_page_config(page_title="Gerador de Briefings ComexStat", layout="wide")
-st.title(" Gerador de Briefings | AEST")
+st.title(" automação de Briefings ComexStat")
 
 # --- Inicialização do Session State ---
 if 'arquivos_gerados' not in st.session_state:
@@ -573,13 +531,13 @@ if 'arquivos_gerados' not in st.session_state:
 
 logo_sidebar_path = "LogoMinasGerais.png"
 if os.path.exists(logo_sidebar_path):
-    st.sidebar.image(logo_sidebar_path, width=150)
+    st.sidebar.image(logo_sidebar_path, width=200) # <- Logo aumentada
 
-st.sidebar.header(" Configurações Avançadas")
-
-api_key_ui = st.secrets.get("GEMINI_API_KEY") 
-
-revisao_texto_gemini_ui = st.sidebar.checkbox("Usar revisão de IA (Gemini)", value=False)
+# --- ALTERAÇÃO AQUI: Sidebar limpa ---
+# st.sidebar.header(" Configurações Avançadas")
+# api_key_ui = st.secrets.get("GEMINI_API_KEY") 
+# revisao_texto_gemini_ui = st.sidebar.checkbox("Usar revisão de IA (Gemini)", value=False)
+# --- FIM DA ALTERAÇÃO ---
 
 
 # --- ENTRADAS PRINCIPAIS ---
@@ -693,6 +651,7 @@ if st.button(" Iniciar Geração do Relatório"):
             if not meses_selecionados: 
                 meses_para_filtrar = list(range(1, ultimo_mes_disponivel + 1))
                 nome_periodo = f"o ano de {ano_principal} (até {meses_pt[ultimo_mes_disponivel]})"
+                nome_periodo_em = f"No ano de {ano_principal} (até {meses_pt[ultimo_mes_disponivel]})"
                 nome_periodo_comp = f"o mesmo período de {ano_comparacao}"
             else:
                 meses_para_filtrar = [MESES_MAPA[m] for m in meses_selecionados]
@@ -700,6 +659,7 @@ if st.button(" Iniciar Geração do Relatório"):
                     st.error(f"O ano {ano_principal} só possui dados até {meses_pt[ultimo_mes_disponivel]}. Por favor, desmarque os meses posteriores.")
                     st.stop()
                 nome_periodo = f"o período de {', '.join(meses_selecionados)} de {ano_principal}"
+                nome_periodo_em = f"No período de {', '.join(meses_selecionados)} de {ano_principal}"
                 nome_periodo_comp = f"o mesmo período de {ano_comparacao}"
             
             # --- Fim da Lógica de Meses ---
@@ -710,7 +670,6 @@ if st.button(" Iniciar Geração do Relatório"):
             df_exp_ano_mg = filtrar_dados_por_estado_e_mes(df_exp_ano, ['MG'], meses_para_filtrar)
             df_exp_ano_mg_paises = filtrar_dados_por_mg_e_pais(df_exp_ano, codigos_paises, agrupado, meses_para_filtrar)
             df_exp_ano_anterior_mg_paises = filtrar_dados_por_mg_e_pais(df_exp_ano_anterior, codigos_paises, agrupado, meses_para_filtrar)
-
             exportacao_pais_ano = df_exp_ano_mg_paises['VL_FOB'].sum()
             exportacao_pais_ano_anterior = df_exp_ano_anterior_mg_paises['VL_FOB'].sum()
             
@@ -806,72 +765,43 @@ if st.button(" Iniciar Geração do Relatório"):
 
                 # --- Geração de Texto ... ---
                 fluxo_e_balanca = f"Considerando {nome_periodo}, Minas Gerais e {nome_relatorio} tiveram um fluxo comercial de {formatar_valor(fluxo_comercial_ano)}, representando {'aumento' if variacao_fluxo > 0 else 'queda'} de {abs(variacao_fluxo):.2f}% em comparação com {nome_periodo_comp}. A balança comercial fechou {'positiva' if balanca_ano > 0 else 'negativa'} para Minas Gerais em {formatar_valor(balanca_ano)}, apresentando {'um crescimento' if variacao_balanca > 0 else 'uma queda'} de {abs(variacao_balanca):.1f}% em relação a {nome_periodo_comp}."
-                frase_1 = fluxo_e_balanca
-
                 texto_exportacao = f"As exportações mineiras para {nome_relatorio} somaram {formatar_valor(exportacao_pais_ano)} neste período, {tipo_diferenca_exp} de {diferenca_exportacao:.1f}% em relação a {nome_periodo_comp}. A participação de {nome_relatorio} nas exportações totais de Minas Gerais no período foi equivalente a {participacao_pais_mg_exp}%. "
-                frase_2 = texto_exportacao
-                texto_exportacao_2 = f"Minas Gerais foi o {posicao_mg_pais_exp}º principal estado exportador brasileiro para {nome_relatorio} no período, com uma participação de {participacao_mg_brasil_exp}% nas vendas do Brasil ao(s) país(es)."
-                frase_3 = texto_exportacao_2
-
-                texto_produtos_exportacao = f"Em {nome_periodo}, os principais produtos exportados de Minas Gerais para {nome_relatorio} foram: "
-                frase_6 = texto_produtos_exportacao
-                texto_produtos_exportacao_lista = []
-                frase_6_lista = []
-                for nome_produto, valor_fob in produtos_exportacao.items(): 
-                    participacao_produto_exportacao = calcular_participacao(valor_fob, exportacao_pais_ano) 
-                    texto_produtos_exportacao_lista.append(f"{nome_produto} ({participacao_produto_exportacao}%)")
-                    frase_6_lista.append(f"{nome_produto} ({participacao_produto_exportacao}%)")
-                texto_produtos_exportacao += "; ".join(texto_produtos_exportacao_lista) + "."
-                frase_6 += "; ".join(frase_6_lista) + "."
-
-                texto_municipios_exportacao = f"Dentre os {len(exportacoes_por_municipio)} municípios de Minas Gerais que exportaram produtos para {nome_relatorio} em {nome_periodo}, os principais foram: "
-                frase_7 = texto_municipios_exportacao
-                texto_municipios_exportacao_lista = []
-                frase_7_lista = []
-                for i, (codigo_municipio, valor_fob) in enumerate(exportacoes_por_municipio.head(5).items()):
-                    nome_municipio = df_uf_mun[df_uf_mun['CO_MUN_GEO'] == codigo_municipio]['NO_MUN_MIN'].iloc[0]
-                    participacao_municipio_exportacao = calcular_participacao(valor_fob, exportacao_pais_ano)
-                    texto_municipios_exportacao_lista.append(f"{nome_municipio} ({participacao_municipio_exportacao}%)")
-                    frase_7_lista.append(f"{nome_municipio} ({participacao_municipio_exportacao}%)")
-                texto_municipios_exportacao += "; ".join(texto_municipios_exportacao_lista) + "."
-                frase_7 += "; ".join(frase_7_lista) + "."
-
-                texto_importacao = f"As importações mineiras provenientes {nome_relatorio} somaram {formatar_valor(importacao_pais_ano)} neste período, {tipo_diferenca_imp} de {diferenca_importacao:.1f}% em relação a {nome_periodo_comp}. A participação de {nome_relatorio} nas importações totais de Minas Gerais no período foi equivalente a {participacao_pais_mg_imp}%. "
-                frase_4 = texto_importacao
-                texto_importacao_2 = f"Minas Gerais foi o {posicao_mg_pais_imp}º principal estado importador brasileiro {nome_relatorio} no período, com uma participação de {participacao_mg_brasil_imp}% nas compras do Brasil ao(s) país(es)."
-                frase_5 = texto_importacao_2
-
-                texto_produtos_importacao = f"Em {nome_periodo}, os principais produtos importados para Minas Gerais {nome_relatorio} foram: "
-                frase_8 = texto_produtos_importacao
-                texto_produtos_importacao_lista = []
-                frase_8_lista = []
-                for nome_produto, valor_fob in produtos_importacao.items():
-                    participacao_produto_importacao = calcular_participacao(valor_fob, importacao_pais_ano) 
-                    texto_produtos_importacao_lista.append(f"{nome_produto} ({participacao_produto_importacao}%)")
-                    frase_8_lista.append(f"{nome_produto} ({participacao_produto_importacao}%)")
-                texto_produtos_importacao += "; ".join(texto_produtos_importacao_lista) + "."
-                frase_8 += "; ".join(frase_8_lista) + "."
-
-                texto_municipios_importacao = f"Dentre os {len(importacoes_por_municipio)} municípios de Minas Gerais que importaram produtos {nome_relatorio} em {nome_periodo}, os principais foram: "
-                frase_9 = texto_municipios_importacao
-                texto_municipios_importacao_lista = []
-                frase_9_lista = []
-                for i, (codigo_municipio, valor_fob) in enumerate(importacoes_por_municipio.head(5).items()):
-                    nome_municipio = df_uf_mun[df_uf_mun['CO_MUN_GEO'] == codigo_municipio]['NO_MUN_MIN'].iloc[0]
-                    participacao_municipio_importacao = calcular_participacao(valor_fob, importacao_pais_ano) 
-                    texto_municipios_importacao_lista.append(f"{nome_municipio} ({participacao_municipio_importacao}%)")
-                    frase_9_lista.append(f"{nome_municipio} ({participacao_municipio_importacao}%)")
-                texto_municipios_importacao += "; ".join(texto_municipios_importacao_lista) + "."
-                frase_9 += "; ".join(frase_9_lista) + "."
-
-                # --- GEMINI ---
-                texto_relatorio = frase_1 + '\n' + frase_2 + frase_3 + frase_6 + frase_7 + '\n' + frase_4 + frase_5 + frase_8 + frase_9
-                texto_processado_ia_paragraphs = []
                 
-                if revisao_texto_gemini_ui:
-                    # st.info("Chamando IA para revisar o texto...") # REMOVIDO
-                    prompt_gemini = f"Agrupe todos os pontos em 5 parágrafos, relacionando por assunto. Você não pode suprimir nenhuma das informações e não pode adicionar nenhuma palavra ou texto que forneça qualquer tipo de valoração ou juízo de valor. Ou seja, sua função é apenas transformar o texto de tópicos para parágrafos. A seguir, o texto: \n{texto_relatorio}"
-                    texto_processado_ia_paragraphs = chamar_gemini(prompt_gemini, api_key_ui)
+                if exportacao_pais_ano > 0:
+                    texto_exportacao_2 = f"Minas Gerais foi o {posicao_mg_pais_exp}º principal estado exportador brasileiro para {nome_relatorio} no período, com uma participação de {participacao_mg_brasil_exp}% nas vendas do Brasil ao(s) país(es)."
+                    texto_produtos_exportacao = f"{nome_periodo_em}, os principais produtos exportados de Minas Gerais para {nome_relatorio} foram: "
+                    texto_produtos_exportacao_lista = []
+                    for nome_produto, valor_fob in produtos_exportacao.items(): 
+                        participacao_produto_exportacao = calcular_participacao(valor_fob, exportacao_pais_ano) 
+                        texto_produtos_exportacao_lista.append(f"{nome_produto} ({participacao_produto_exportacao}%)")
+                    texto_produtos_exportacao += "; ".join(texto_produtos_exportacao_lista) + "."
+                    
+                    texto_municipios_exportacao = f"Dentre os {len(exportacoes_por_municipio)} municípios de Minas Gerais que exportaram produtos para {nome_relatorio} em {nome_periodo_em}, os principais foram: "
+                    texto_municipios_exportacao_lista = []
+                    for i, (codigo_municipio, valor_fob) in enumerate(exportacoes_por_municipio.head(5).items()):
+                        nome_municipio = df_uf_mun[df_uf_mun['CO_MUN_GEO'] == codigo_municipio]['NO_MUN_MIN'].iloc[0]
+                        participacao_municipio_exportacao = calcular_participacao(valor_fob, exportacao_pais_ano)
+                        texto_municipios_exportacao_lista.append(f"{nome_municipio} ({participacao_municipio_exportacao}%)")
+                    texto_municipios_exportacao += "; ".join(texto_municipios_exportacao_lista) + "."
+                
+                texto_importacao = f"As importações mineiras provenientes {nome_relatorio} somaram {formatar_valor(importacao_pais_ano)} neste período, {tipo_diferenca_imp} de {diferenca_importacao:.1f}% em relação a {nome_periodo_comp}. A participação de {nome_relatorio} nas importações totais de Minas Gerais no período foi equivalente a {participacao_pais_mg_imp}%. "
+                
+                if importacao_pais_ano > 0:
+                    texto_importacao_2 = f"Minas Gerais foi o {posicao_mg_pais_imp}º principal estado importador brasileiro {nome_relatorio} no período, com uma participação de {participacao_mg_brasil_imp}% nas compras do Brasil ao(s) país(es)."
+                    texto_produtos_importacao = f"{nome_periodo_em}, os principais produtos importados para Minas Gerais {nome_relatorio} foram: "
+                    texto_produtos_importacao_lista = []
+                    for nome_produto, valor_fob in produtos_importacao.items():
+                        participacao_produto_importacao = calcular_participacao(valor_fob, importacao_pais_ano) 
+                        texto_produtos_importacao_lista.append(f"{nome_produto} ({participacao_produto_importacao}%)")
+                    texto_produtos_importacao += "; ".join(texto_produtos_importacao_lista) + "."
+
+                    texto_municipios_importacao = f"Dentre os {len(importacoes_por_municipio)} municípios de Minas Gerais que importaram produtos {nome_relatorio} em {nome_periodo_em}, os principais foram: "
+                    texto_municipios_importacao_lista = []
+                    for i, (codigo_municipio, valor_fob) in enumerate(importacoes_por_municipio.head(5).items()):
+                        nome_municipio = df_uf_mun[df_uf_mun['CO_MUN_GEO'] == codigo_municipio]['NO_MUN_MIN'].iloc[0]
+                        participacao_municipio_importacao = calcular_participacao(valor_fob, importacao_pais_ano) 
+                        texto_municipios_importacao_lista.append(f"{nome_municipio} ({participacao_municipio_importacao}%)")
+                    texto_municipios_importacao += "; ".join(texto_municipios_importacao_lista) + "."
                 
                 # --- Montagem do Documento ---
                 if nome_agrupamento:
@@ -883,24 +813,22 @@ if st.button(" Iniciar Geração do Relatório"):
                 app.nova_secao()
                 app.adicionar_titulo("Fluxo Comercial")
                 app.adicionar_conteudo_formatado(fluxo_e_balanca)
+                
                 app.nova_secao()
                 app.adicionar_titulo("Exportações")
                 app.adicionar_conteudo_formatado(texto_exportacao)
-                app.adicionar_conteudo_formatado(texto_exportacao_2)
-                app.adicionar_conteudo_formatado(texto_produtos_exportacao)
-                app.adicionar_conteudo_formatado(texto_municipios_exportacao)
+                if exportacao_pais_ano > 0:
+                    app.adicionar_conteudo_formatado(texto_exportacao_2)
+                    app.adicionar_conteudo_formatado(texto_produtos_exportacao)
+                    app.adicionar_conteudo_formatado(texto_municipios_exportacao)
+                
                 app.nova_secao()
                 app.adicionar_titulo("Importações")
                 app.adicionar_conteudo_formatado(texto_importacao)
-                app.adicionar_conteudo_formatado(texto_importacao_2)
-                app.adicionar_conteudo_formatado(texto_produtos_importacao)
-                app.adicionar_conteudo_formatado(texto_municipios_importacao)
-                
-                if texto_processado_ia_paragraphs: 
-                    app.nova_secao()
-                    app.adicionar_titulo("Texto processado pela IA")
-                    for paragraph in texto_processado_ia_paragraphs:
-                        app.adicionar_conteudo_formatado(paragraph)
+                if importacao_pais_ano > 0:
+                    app.adicionar_conteudo_formatado(texto_importacao_2)
+                    app.adicionar_conteudo_formatado(texto_produtos_importacao)
+                    app.adicionar_conteudo_formatado(texto_municipios_importacao)
                 
                 file_bytes, file_name = app.finalizar_documento() 
                 st.session_state.arquivos_gerados.append({"name": file_name, "data": file_bytes})
@@ -916,14 +844,11 @@ if st.button(" Iniciar Geração do Relatório"):
                     codigos_paises_loop = [obter_codigo_pais(pais)]
 
                     # --- 2. Bloco de Exportação (Separado) ---
-                    # st.info(f"Processando Exportação (NCM) para {pais}...") # REMOVIDO
                     df_exp_ano = carregar_dataframe(url_exp_ano_principal, f"EXP_{ano_principal}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
                     df_exp_ano_anterior = carregar_dataframe(url_exp_ano_comparacao, f"EXP_{ano_comparacao}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
                     if df_exp_ano is None or df_exp_ano_anterior is None:
                         st.error(f"Não foi possível carregar dados de exportação para {pais}.")
                         continue
-
-                    ultimo_mes_disponivel = df_exp_ano['CO_MES'].max()
                     
                     df_exp_ano_estados = filtrar_dados_por_estado_e_mes(df_exp_ano, estados_brasileiros, meses_para_filtrar)
                     df_exp_ano_mg = filtrar_dados_por_estado_e_mes(df_exp_ano, ['MG'], meses_para_filtrar)
@@ -939,18 +864,15 @@ if st.button(" Iniciar Geração do Relatório"):
                         posicao_pais_mg_exp = 0
                     
                     exportacao_mg_total_ano = df_exp_ano_mg['VL_FOB'].sum()
-
                     participacao_pais_mg_exp = calcular_participacao(exportacao_pais_ano, exportacao_mg_total_ano)
                     diferenca_exportacao, tipo_diferenca_exp = calcular_diferenca_percentual(exportacao_pais_ano, exportacao_pais_ano_anterior)
                     
                     exportacao_mg_para_pais = df_exp_ano[ (df_exp_ano['SG_UF_NCM'] == 'MG') & (df_exp_ano['CO_PAIS'].isin(codigos_paises_loop)) & (df_exp_ano['CO_MES'].isin(meses_para_filtrar)) ]['VL_FOB'].sum()
                     exportacao_brasil_pais = df_exp_ano[ (df_exp_ano['CO_PAIS'].isin(codigos_paises_loop)) & (df_exp_ano['CO_MES'].isin(meses_para_filtrar)) ]['VL_FOB'].sum()
-                    
                     participacao_mg_brasil_exp = calcular_participacao(exportacao_mg_para_pais, exportacao_brasil_pais)
                     posicao_mg_pais_exp = calcular_posicao_estado_pais(df_exp_ano_estados, codigos_paises_loop)
                     produtos_exportacao = agregar_dados_por_produto(df_exp_ano_mg_paises.copy(), df_ncm)
                     
-                    # st.info(f"Processando Exportação (Municípios) para {pais}...") # REMOVIDO
                     df_exp_mun = carregar_dataframe(url_exp_mun_principal, f"EXP_{ano_principal}_MUN.csv", usecols=MUN_COLS)
                     if df_exp_mun is None:
                         st.error(f"Não foi possível carregar dados de exportação por município para {pais}.")
@@ -959,11 +881,9 @@ if st.button(" Iniciar Geração do Relatório"):
                     df_exp_mun_filtrado = df_exp_mun[(df_exp_mun['SG_UF_MUN'] == 'MG') & (df_exp_mun['CO_PAIS'].isin(codigos_paises_loop)) & (df_exp_mun['CO_MES'].isin(meses_para_filtrar))]
                     exportacoes_por_municipio, total_exportacoes_municipios = agregar_dados_por_municipio(df_exp_mun_filtrado)
                     
-                    # st.info(f"Liberando memória de exportação de {pais}...") # REMOVIDO
                     del df_exp_ano, df_exp_ano_anterior, df_exp_ano_estados, df_exp_ano_mg, df_exp_ano_mg_paises, df_exp_mun, df_exp_mun_filtrado
 
                     # --- 4. Bloco de Importação (Separado) ---
-                    # st.info(f"Processando Importação (NCM) para {pais}...") # REMOVIDO
                     df_imp_ano = carregar_dataframe(url_imp_ano_principal, f"IMP_{ano_principal}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
                     df_imp_ano_anterior = carregar_dataframe(url_imp_ano_comparacao, f"IMP_{ano_comparacao}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
                     if df_imp_ano is None or df_imp_ano_anterior is None:
@@ -984,18 +904,15 @@ if st.button(" Iniciar Geração do Relatório"):
                         posicao_pais_mg_imp = 0
                     
                     importacao_mg_total_ano = df_imp_ano_mg['VL_FOB'].sum()
-
                     participacao_pais_mg_imp = calcular_participacao(importacao_pais_ano, importacao_mg_total_ano)
                     diferenca_importacao, tipo_diferenca_imp = calcular_diferenca_percentual(importacao_pais_ano, importacao_pais_ano_anterior)
                     
                     importacao_mg_para_pais = df_imp_ano[ (df_imp_ano['SG_UF_NCM'] == 'MG') & (df_imp_ano['CO_PAIS'].isin(codigos_paises_loop)) & (df_imp_ano['CO_MES'].isin(meses_para_filtrar)) ]['VL_FOB'].sum()
                     importacao_brasil_pais = df_imp_ano[ (df_imp_ano['CO_PAIS'].isin(codigos_paises_loop)) & (df_imp_ano['CO_MES'].isin(meses_para_filtrar)) ]['VL_FOB'].sum()
-                    
                     participacao_mg_brasil_imp = calcular_participacao(importacao_mg_para_pais, importacao_brasil_pais)
                     posicao_mg_pais_imp = calcular_posicao_estado_pais(df_imp_ano_estados, codigos_paises_loop)
                     produtos_importacao = agregar_dados_por_produto(df_imp_ano_mg_paises.copy(), df_ncm)
                     
-                    # st.info(f"Processando Importação (Municípios) para {pais}...") # REMOVIDO
                     df_imp_mun = carregar_dataframe(url_imp_mun_principal, f"IMP_{ano_principal}_MUN.csv", usecols=MUN_COLS)
                     if df_imp_mun is None:
                         st.error(f"Não foi possível carregar dados de importação por município para {pais}.")
@@ -1004,22 +921,20 @@ if st.button(" Iniciar Geração do Relatório"):
                     df_imp_mun_filtrado = df_imp_mun[(df_imp_mun['SG_UF_MUN'] == 'MG') & (df_imp_mun['CO_PAIS'].isin(codigos_paises_loop)) & (df_imp_mun['CO_MES'].isin(meses_para_filtrar))]
                     importacoes_por_municipio, total_importacoes_municipios = agregar_dados_por_municipio(df_imp_mun_filtrado)
                     
-                    # st.info(f"Liberando memória de importação de {pais}...") # REMOVIDO
                     del df_imp_ano, df_imp_ano_anterior, df_imp_ano_estados, df_imp_ano_mg, df_imp_ano_mg_paises, df_imp_mun, df_imp_mun_filtrado
                     
                     # --- 6. Cálculo Final (Separado) ---
-                    # st.info(f"Calculando balança para {pais}...") # REMOVIDO
                     balanca_ano, balanca_ano_anterior, fluxo_comercial_ano, fluxo_comercial_ano_anterior, variacao_balanca, variacao_fluxo = calcular_balanca_e_fluxo(exportacao_pais_ano, importacao_pais_ano, exportacao_pais_ano_anterior, importacao_pais_ano_anterior)
 
                     # --- 7. Geração de Texto e Documento (Separado) ---
-                    # st.info(f"Gerando documento .docx para {pais}...") # REMOVIDO
-                    
                     nome_pais_base = pais
 
                     # --- ARTIGO ---
                     nome_relatorio = nome_pais_base
                     nome_relatorio_capitalizado = nome_pais_base
-                    artigo = obter_artigo_pais_gemini(nome_pais_base, api_key_ui)
+                    
+                    # --- ALTERAÇÃO AQUI: Busca o artigo no mapa local ---
+                    artigo = ARTIGOS_PAISES_MAP.get(nome_pais_base) # Retorna o artigo ou None
                     valid_articles = ['o', 'a', 'os', 'as']
 
                     if artigo and artigo.lower() in valid_articles:
@@ -1027,7 +942,7 @@ if st.button(" Iniciar Geração do Relatório"):
                         nome_relatorio_capitalizado = f"{artigo.capitalize()} {nome_pais_base}"
                     else:
                         artigo = None
-                        print(f"Não foi possível obter um artigo válido para '{nome_pais_base}'. Usando nome do país sem artigo.")
+                        print(f"Artigo não encontrado no mapa local para '{nome_pais_base}'. Usando nome do país sem artigo.")
 
 
                     contracoes_map = {'o': 'do', 'a': 'da', 'os': 'dos', 'as': 'das'}
@@ -1042,113 +957,80 @@ if st.button(" Iniciar Geração do Relatório"):
                     
                     # --- Geração de Texto ... ---
                     fluxo_e_balanca = f"Considerando {nome_periodo}, Minas Gerais e {nome_relatorio} tiveram um fluxo comercial de {formatar_valor(fluxo_comercial_ano)}, representando {'aumento' if variacao_fluxo > 0 else 'queda'} de {abs(variacao_fluxo):.2f}% em comparação com {nome_periodo_comp}. A balança comercial fechou {'positiva' if balanca_ano > 0 else 'negativa'} para Minas Gerais em {formatar_valor(balanca_ano)}, apresentando {'um crescimento' if variacao_balanca > 0 else 'uma queda'} de {abs(variacao_balanca):.1f}% em relação a {nome_periodo_comp}."
-                    frase_1 = fluxo_e_balanca
 
                     if posicao_pais_mg_exp > 0: 
                         texto_exportacao = f"{nome_relatorio_capitalizado} foi o {posicao_pais_mg_exp}º destino das exportações de Minas Gerais em {nome_periodo}. As exportações mineiras para {nome_relatorio} somaram {formatar_valor(exportacao_pais_ano)} neste período, {tipo_diferenca_exp} de {diferenca_exportacao:.1f}% em relação a {nome_periodo_comp}. A participação {nome_relatorio_com_contracao} nas exportações totais de Minas Gerais no período foi equivalente a {participacao_pais_mg_exp}%. "
-                        frase_2 = texto_exportacao
                     else: 
                         texto_exportacao = f"Em {nome_periodo}, Minas Gerais não registrou exportações para {nome_relatorio}."
-                        frase_2 = texto_exportacao
 
-                    if posicao_mg_pais_exp > 0: 
-                        texto_exportacao_2 = f"Minas Gerais foi o {posicao_mg_pais_exp}º principal estado exportador brasileiro para {nome_relatorio} em {nome_periodo}, com uma participação de {participacao_mg_brasil_exp}% nas vendas do Brasil ao país."
-                        frase_3 = texto_exportacao_2
-                    else: 
-                        texto_exportacao_2 = f"O estado de Minas Gerais não se posicionou no ranking de exportadores brasileiros para {nome_relatorio}, pois não houve registro de vendas."
-                        frase_3 = texto_exportacao_2
+                    if exportacao_pais_ano > 0:
+                        if posicao_mg_pais_exp > 0: 
+                            texto_exportacao_2 = f"Minas Gerais foi o {posicao_mg_pais_exp}º principal estado exportador brasileiro para {nome_relatorio} em {nome_periodo}, com uma participação de {participacao_mg_brasil_exp}% nas vendas do Brasil ao país."
+                        else: 
+                            texto_exportacao_2 = f"O estado de Minas Gerais não se posicionou no ranking de exportadores brasileiros para {nome_relatorio}, pois não houve registro de vendas."
 
-                    texto_produtos_exportacao = f"Em {nome_periodo}, os principais produtos exportados de Minas Gerais para {nome_relatorio} foram: "
-                    frase_6 = texto_produtos_exportacao
-                    texto_produtos_exportacao_lista = []
-                    frase_6_lista = []
-                    for nome_produto, valor_fob in produtos_exportacao.items(): 
-                        participacao_produto_exportacao = calcular_participacao(valor_fob, exportacao_pais_ano) 
-                        texto_produtos_exportacao_lista.append(f"{nome_produto} ({participacao_produto_exportacao}%)")
-                        frase_6_lista.append(f"{nome_produto} ({participacao_produto_exportacao}%)")
-                    texto_produtos_exportacao += "; ".join(texto_produtos_exportacao_lista) + "."
-                    frase_6 += "; ".join(frase_6_lista) + "."
-
-                    texto_municipios_exportacao = f"Dentre os {len(exportacoes_por_municipio)} municípios de Minas Gerais que exportaram produtos para {nome_relatorio} em {nome_periodo}, os principais foram: "
-                    frase_7 = texto_municipios_exportacao
-                    texto_municipios_exportacao_lista = []
-                    frase_7_lista = []
-                    for i, (codigo_municipio, valor_fob) in enumerate(exportacoes_por_municipio.head(5).items()):
-                        nome_municipio = df_uf_mun[df_uf_mun['CO_MUN_GEO'] == codigo_municipio]['NO_MUN_MIN'].iloc[0]
-                        participacao_municipio_exportacao = calcular_participacao(valor_fob, exportacao_pais_ano) 
-                        texto_municipios_exportacao_lista.append(f"{nome_municipio} ({participacao_municipio_exportacao}%)")
-                        frase_7_lista.append(f"{nome_municipio} ({participacao_municipio_exportacao}%)")
-                    texto_municipios_exportacao += "; ".join(texto_municipios_exportacao_lista) + "."
-                    frase_7 += "; ".join(frase_7_lista) + "."
+                        texto_produtos_exportacao = f"{nome_periodo_em}, os principais produtos exportados de Minas Gerais para {nome_relatorio} foram: "
+                        texto_produtos_exportacao_lista = []
+                        for nome_produto, valor_fob in produtos_exportacao.items(): 
+                            participacao_produto_exportacao = calcular_participacao(valor_fob, exportacao_pais_ano) 
+                            texto_produtos_exportacao_lista.append(f"{nome_produto} ({participacao_produto_exportacao}%)")
+                        texto_produtos_exportacao += "; ".join(texto_produtos_exportacao_lista) + "."
+                        
+                        texto_municipios_exportacao = f"Dentre os {len(exportacoes_por_municipio)} municípios de Minas Gerais que exportaram produtos para {nome_relatorio} em {nome_periodo_em}, os principais foram: "
+                        texto_municipios_exportacao_lista = []
+                        for i, (codigo_municipio, valor_fob) in enumerate(exportacoes_por_municipio.head(5).items()):
+                            nome_municipio = df_uf_mun[df_uf_mun['CO_MUN_GEO'] == codigo_municipio]['NO_MUN_MIN'].iloc[0]
+                            participacao_municipio_exportacao = calcular_participacao(valor_fob, exportacao_pais_ano) 
+                            texto_municipios_exportacao_lista.append(f"{nome_municipio} ({participacao_municipio_exportacao}%)")
+                        texto_municipios_exportacao += "; ".join(texto_municipios_exportacao_lista) + "."
 
                     if posicao_pais_mg_imp > 0: 
                         texto_importacao = f"{nome_relatorio_capitalizado} foi a {posicao_pais_mg_imp}ª origem das importações de Minas Gerais em {nome_periodo}. As importações mineiras provenientes {nome_relatorio_com_contracao} somaram {formatar_valor(importacao_pais_ano)} neste período, {tipo_diferenca_imp} de {diferenca_importacao:.1f}% em relação a {nome_periodo_comp}. A participação {nome_relatorio_com_contracao} nas importações totais de Minas Gerais no período foi equivalente a {participacao_pais_mg_imp}%. "
-                        frase_4 = texto_importacao
                     else: 
                         texto_importacao = f"Em {nome_periodo}, Minas Gerais não registrou importações provenientes {nome_relatorio_com_contracao}."
-                        frase_4 = texto_importacao
 
-                    if posicao_mg_pais_imp > 0: 
-                        texto_importacao_2 = f"Minas Gerais foi o {posicao_mg_pais_imp}º principal estado importador brasileiro {nome_relatorio_com_contracao} em {nome_periodo}, com uma participação de {participacao_mg_brasil_imp}% nas compras do Brasil ao país."
-                        frase_5 = texto_importacao_2
-                    else: 
-                        texto_importacao_2 = f"O estado de Minas Gerais não se posicionou no ranking de importadores brasileiros {nome_relatorio_com_contracao}, pois não houve registro de compras."
-                        frase_5 = texto_importacao_2
+                    if importacao_pais_ano > 0:
+                        if posicao_mg_pais_imp > 0: 
+                            texto_importacao_2 = f"Minas Gerais foi o {posicao_mg_pais_imp}º principal estado importador brasileiro {nome_relatorio_com_contracao} em {nome_periodo}, com uma participação de {participacao_mg_brasil_imp}% nas compras do Brasil ao país."
+                        else: 
+                            texto_importacao_2 = f"O estado de Minas Gerais não se posicionou no ranking de importadores brasileiros {nome_relatorio_com_contracao}, pois não houve registro de compras."
 
-                    texto_produtos_importacao = f"Em {nome_periodo}, os principais produtos importados para Minas Gerais {nome_relatorio_com_contracao} foram: "
-                    frase_8 = texto_produtos_importacao
-                    texto_produtos_importacao_lista = []
-                    frase_8_lista = []
-                    for nome_produto, valor_fob in produtos_importacao.items():
-                        participacao_produto_importacao = calcular_participacao(valor_fob, importacao_pais_ano) 
-                        texto_produtos_importacao_lista.append(f"{nome_produto} ({participacao_produto_importacao}%)")
-                        frase_8_lista.append(f"{nome_produto} ({participacao_produto_importacao}%)")
-                    texto_produtos_importacao += "; ".join(texto_produtos_importacao_lista) + "."
-                    frase_8 += "; ".join(frase_8_lista) + "."
+                        texto_produtos_importacao = f"{nome_periodo_em}, os principais produtos importados para Minas Gerais {nome_relatorio_com_contracao} foram: "
+                        texto_produtos_importacao_lista = []
+                        for nome_produto, valor_fob in produtos_importacao.items():
+                            participacao_produto_importacao = calcular_participacao(valor_fob, importacao_pais_ano) 
+                            texto_produtos_importacao_lista.append(f"{nome_produto} ({participacao_produto_importacao}%)")
+                        texto_produtos_importacao += "; ".join(texto_produtos_importacao_lista) + "."
 
-                    texto_municipios_importacao = f"Dentre os {len(importacoes_por_municipio)} municípios de Minas Gerais que importaram produtos {nome_relatorio_com_contracao} em {nome_periodo}, os principais foram: "
-                    frase_9 = texto_municipios_importacao
-                    texto_municipios_importacao_lista = []
-                    frase_9_lista = []
-                    for i, (codigo_municipio, valor_fob) in enumerate(importacoes_por_municipio.head(5).items()):
-                        nome_municipio = df_uf_mun[df_uf_mun['CO_MUN_GEO'] == codigo_municipio]['NO_MUN_MIN'].iloc[0]
-                        participacao_municipio_importacao = calcular_participacao(valor_fob, importacao_pais_ano) 
-                        texto_municipios_importacao_lista.append(f"{nome_municipio} ({participacao_municipio_importacao}%)")
-                        frase_9_lista.append(f"{nome_municipio} ({participacao_municipio_importacao}%)")
-                    texto_municipios_importacao += "; ".join(texto_municipios_importacao_lista) + "."
-                    frase_9 += "; ".join(frase_9_lista) + "."
-
-                    # --- GEMINI ---
-                    texto_processado_ia_paragraphs = None
-                    if revisao_texto_gemini_ui:
-                      # st.info(f"Chamando IA para revisar texto de {pais}...") # REMOVIDO
-                      texto_relatorio = frase_1 + '\n' + frase_2 + '\n' + frase_3 + '\n' + frase_6 + '\n' + frase_7 + '\n' + frase_4 + '\n' + frase_5 + '\n' + frase_8 + '\n' + frase_9
-                      prompt_gemini = f"Ajuste a ortografia e concordância das orações a seguir. Você não pode suprimir nenhuma das informações e não pode adicionar nenhuma palavra ou texto que forneça qualquer tipo de valoração ou juízo de valor. Ou seja, sua função é apenas fazer ajustes de ortografia e concordância nas orações, mantendo todas as informações. Faça o retorno em formatação simples. A seguir, as orações: \n{texto_relatorio}"
-                      texto_processado_ia_paragraphs = chamar_gemini(prompt_gemini, api_key_ui)
+                        texto_municipios_importacao = f"Dentre os {len(importacoes_por_municipio)} municípios de Minas Gerais que importaram produtos {nome_relatorio_com_contracao} em {nome_periodo_em}, os principais foram: "
+                        texto_municipios_importacao_lista = []
+                        for i, (codigo_municipio, valor_fob) in enumerate(importacoes_por_municipio.head(5).items()):
+                            nome_municipio = df_uf_mun[df_uf_mun['CO_MUN_GEO'] == codigo_municipio]['NO_MUN_MIN'].iloc[0]
+                            participacao_municipio_importacao = calcular_participacao(valor_fob, importacao_pais_ano) 
+                            texto_municipios_importacao_lista.append(f"{nome_municipio} ({participacao_municipio_importacao}%)")
+                        texto_municipios_importacao += "; ".join(texto_municipios_importacao_lista) + "."
                     
                     # --- Montagem do Documento ---
                     app.set_titulo(titulo_documento)
                     app.nova_secao()
                     app.adicionar_titulo("Fluxo Comercial")
                     app.adicionar_conteudo_formatado(fluxo_e_balanca)
+                    
                     app.nova_secao()
                     app.adicionar_titulo("Exportações")
                     app.adicionar_conteudo_formatado(texto_exportacao)
-                    app.adicionar_conteudo_formatado(texto_exportacao_2)
-                    app.adicionar_conteudo_formatado(texto_produtos_exportacao)
-                    app.adicionar_conteudo_formatado(texto_municipios_importacao)
+                    if exportacao_pais_ano > 0:
+                        app.adicionar_conteudo_formatado(texto_exportacao_2)
+                        app.adicionar_conteudo_formatado(texto_produtos_exportacao)
+                        app.adicionar_conteudo_formatado(texto_municipios_exportacao)
+                    
                     app.nova_secao()
                     app.adicionar_titulo("Importações")
                     app.adicionar_conteudo_formatado(texto_importacao)
-                    app.adicionar_conteudo_formatado(texto_importacao_2)
-                    app.adicionar_conteudo_formatado(texto_produtos_importacao)
-                    app.adicionar_conteudo_formatado(texto_municipios_importacao)
-
-                    if texto_processado_ia_paragraphs:
-                        app.nova_secao()
-                        app.adicionar_titulo("Texto processado pela IA")
-                        for paragraph in texto_processado_ia_paragraphs:
-                            app.adicionar_conteudo_formatado(paragraph)
+                    if importacao_pais_ano > 0:
+                        app.adicionar_conteudo_formatado(texto_importacao_2)
+                        app.adicionar_conteudo_formatado(texto_produtos_importacao)
+                        app.adicionar_conteudo_formatado(texto_municipios_importacao)
                     
                     file_bytes, file_name = app.finalizar_documento()
                     st.session_state.arquivos_gerados.append({"name": file_name, "data": file_bytes})
@@ -1212,4 +1094,3 @@ with col1:
 with col2:
     # Coluna 2 (maior) agora contém o texto
     st.caption("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
-
