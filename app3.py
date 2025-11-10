@@ -1285,10 +1285,11 @@ if st.session_state.arquivos_gerados:
             key=f"download_{arquivo['name']}"
         )
 
-# --- Bloco de Rodapé com Logo ---
-st.divider() # Adiciona uma linha horizontal para separar
+# --- Bloco de Rodapé (Corrigido com Alinhamento Vertical) ---
+st.divider() 
 
-col1, col2 = st.columns([0.7, 0.3]) # 70% de espaço para o texto, 30% para a logo
+# --- ALTERAÇÃO AQUI: Adicionado 'vertical_alignment="center"' ---
+col1, col2 = st.columns([0.7, 0.3], vertical_alignment="center") 
 
 with col1:
     st.caption("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
@@ -1296,9 +1297,10 @@ with col1:
 with col2:
     logo_footer_path = "AEST Sede.png"
     if os.path.exists(logo_footer_path):
-        st.image(logo_footer_path, width=50) # Você pode ajustar o 'width'
+        st.image(logo_footer_path, width=75) # Você pode ajustar o 'width'
     else:
         st.caption("Logo AEST não encontrada.")
+
 
 
 
