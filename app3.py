@@ -557,7 +557,7 @@ if 'arquivos_gerados' not in st.session_state:
 
 logo_sidebar_path = "LogoMinasGerais.png"
 if os.path.exists(logo_sidebar_path):
-    st.sidebar.image(logo_sidebar_path, width=150)
+    st.sidebar.image(logo_sidebar_path, width=250)
 
 st.sidebar.header(" Configurações Avançadas")
 
@@ -1287,4 +1287,5 @@ if st.session_state.arquivos_gerados:
 
 # --- Adiciona o rodapé ---
 st.caption("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
+
 
