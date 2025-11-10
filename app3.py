@@ -273,12 +273,12 @@ def agregar_dados_por_produto(df, df_ncm, ano_completo, ultimo_mes_disponivel):
 def obter_artigo_pais_gemini(nome_pais, api_key):
     """Chama a API do Gemini para obter o artigo de um país."""
     if not api_key:
-        st.warning("API Key do Gemini não fornecida. Usando país sem artigo.")
+        st.warning("Função de Artigo: API Key do Gemini não configurada nos 'Secrets'.")
         return None
         
     st.info(f"Consultando IA para obter o artigo de '{nome_pais}'...")
     
-    # --- ALTERAÇÃO AQUI: Prompt melhorado para artigos ---
+    # Prompt melhorado para artigos
     prompt = f"""Qual o artigo definido (o, a, os, as) correto para se referir ao país "{nome_pais}"? 
     Responda APENAS com o artigo.
     Por exemplo:
@@ -287,7 +287,6 @@ def obter_artigo_pais_gemini(nome_pais, api_key):
     - Para "Estados Unidos" responda "os"
     - Para "Filipinas" responda "as"
     """
-    # --- FIM DA ALTERAÇÃO ---
 
     url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=' + api_key
     headers = {'Content-Type': 'application/json'}
@@ -318,7 +317,7 @@ def obter_artigo_pais_gemini(nome_pais, api_key):
 def chamar_gemini(texto, api_key):
     """Chama a API do Google Gemini para processar o texto."""
     if not api_key:
-        st.warning("API Key do Gemini não fornecida. Retornando texto original.")
+        st.warning("Função de Revisão: API Key do Gemini não configurada nos 'Secrets'.")
         return [texto] # Retorna o texto original em parágrafos
         
     url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=' + api_key
@@ -378,7 +377,6 @@ def sanitize_filename(filename):
 # --- CLASSE DE DOCUMENTO (Refatorada para aceitar caminhos) ---
 
 class DocumentoApp:
-    # --- ALTERAÇÃO AQUI: Removido diretorio_base do construtor ---
     def __init__(self, logo_path):
         self.doc = Document()
         self.secao_atual = 0
@@ -422,7 +420,7 @@ class DocumentoApp:
         run.font.size = Pt(12)
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
 
-    def adicionar_titulo(self, texto):
+D.adicionar_titulo(texto)
         p = self.doc.add_paragraph()
         if self.subsecao_atual == 0:
             run = p.add_run(f"{self.secao_atual}. {texto}")
@@ -476,7 +474,7 @@ class DocumentoApp:
             "Superintendência de Atração de Investimentos e Estímulo à Exportação"
         ]
         
-        # --- ALTERAÇÃO AQUI: Formatação de cabeçalho explícita ---
+        # --- Formatação de cabeçalho explícita ---
         
         def formatar_paragrafo_cabecalho(p):
             p.paragraph_format.space_before = Pt(0)
@@ -509,7 +507,7 @@ class DocumentoApp:
             run.font.name = 'Times New Roman'
             run.font.size = Pt(11)
             run.bold = False # Linhas 3 e 4: REGULAR
-        # --- FIM DA ALTERAÇÃO ---
+        # --- Fim da formatação ---
 
     def finalizar_documento(self):
         """Salva o documento em memória e retorna."""
@@ -537,7 +535,6 @@ class DocumentoApp:
             self.doc.save(caminho_completo)
             st.info(f"Salvo no servidor em: {caminho_completo}")
         except Exception:
-            # Não é um erro crítico se não puder salvar no servidor
             pass 
 
         return file_bytes, nome_arquivo_sanitizado
@@ -556,20 +553,14 @@ if 'arquivos_gerados' not in st.session_state:
 
 # --- ENTRADAS DO USUÁRIO NA SIDEBAR ---
 
-# --- ALTERAÇÃO AQUI: Logo da Sidebar adicionada ---
 logo_sidebar_path = "LogoMinasGerais.png"
 if os.path.exists(logo_sidebar_path):
     st.sidebar.image(logo_sidebar_path, width=150)
-else:
-    st.sidebar.warning("Logo não encontrado.")
-# --- FIM DA ALTERAÇÃO ---
 
 st.sidebar.header(" Configurações Avançadas")
 
-# --- ALTERAÇÃO AQUI: Leitura da API Key do Streamlit Secrets ---
+# --- ALTERAÇÃO AQUI: Leitura da API Key (sem aviso) ---
 api_key_ui = st.secrets.get("GEMINI_API_KEY") 
-if not api_key_ui:
-    st.sidebar.warning("API Key do Gemini não configurada nos 'Secrets' do Streamlit.")
 # --- FIM DA ALTERAÇÃO ---
 
 # --- REMOVIDO: Input do diretório ---
@@ -629,8 +620,6 @@ if st.button(" Iniciar Geração do Relatório"):
         st.warning(f"Aviso: A logo 'LogoMinasGerais.png' não foi encontrada. O cabeçalho será gerado sem a logo.")
         logo_path_to_use = None
     
-    # O diretório é fixo em /tmp/ no servidor, não precisa de validação de input
-    
     with st.spinner(f"Gerando relatório para {paises_input} ({ano_selecionado})... Isso pode levar alguns minutos."):
         
         try:
@@ -670,17 +659,14 @@ if st.button(" Iniciar Geração do Relatório"):
                 st.error("Não foi possível carregar dados de exportação. Abortando.")
                 st.stop()
 
-            # Define período com base no arquivo de exportação (principal)
             ultimo_mes_disponivel = df_exp_ano['CO_MES'].max()
             ano_completo = ultimo_mes_disponivel == 12
 
-            # Cálculos NCM Exportação
             df_exp_ano_estados = filtrar_dados_por_estado_e_mes(df_exp_ano, estados_brasileiros, ultimo_mes_disponivel, ano_completo)
             df_exp_ano_anterior_estados = filtrar_dados_por_estado_e_mes(df_exp_ano_anterior, estados_brasileiros, ultimo_mes_disponivel, ano_completo)
             df_exp_ano_mg = filtrar_dados_por_estado_e_mes(df_exp_ano, ['MG'], ultimo_mes_disponivel, ano_completo)
             df_exp_ano_mg_paises = filtrar_dados_por_mg_e_pais(df_exp_ano, codigos_paises, agrupado, ultimo_mes_disponivel, ano_completo)
             df_exp_ano_anterior_mg_paises = filtrar_dados_por_mg_e_pais(df_exp_ano_anterior, codigos_paises, agrupado, ultimo_mes_disponivel, ano_completo)
-
             exportacao_pais_ano = df_exp_ano_mg_paises['VL_FOB'].sum()
             exportacao_pais_ano_anterior = df_exp_ano_anterior_mg_paises['VL_FOB'].sum()
             
@@ -697,7 +683,7 @@ if st.button(" Iniciar Geração do Relatório"):
             if not ano_completo:
                 df_exp_ano_mg_filtered = df_exp_ano_mg[df_exp_ano_mg['CO_MES'] <= ultimo_mes_disponivel]
             exportacao_mg_total_ano = df_exp_ano_mg_filtered['VL_FOB'].sum()
-            del df_exp_ano_mg_filtered # Libera memória
+            del df_exp_ano_mg_filtered 
 
             participacao_pais_mg_exp = calcular_participacao(exportacao_pais_ano, exportacao_mg_total_ano)
             diferenca_exportacao, tipo_diferenca_exp = calcular_diferenca_percentual(exportacao_pais_ano, exportacao_pais_ano_anterior, ano_completo, ultimo_mes_disponivel)
@@ -707,15 +693,12 @@ if st.button(" Iniciar Geração do Relatório"):
                 df_exp_brasil_periodo = df_exp_ano[df_exp_ano['CO_MES'] <= ultimo_mes_disponivel]
             exportacao_mg_para_pais = df_exp_brasil_periodo[(df_exp_brasil_periodo['SG_UF_NCM'] == 'MG') & (df_exp_brasil_periodo['CO_PAIS'].isin(codigos_paises))]['VL_FOB'].sum()
             exportacao_brasil_pais = df_exp_brasil_periodo[df_exp_brasil_periodo['CO_PAIS'].isin(codigos_paises)]['VL_FOB'].sum()
-            del df_exp_brasil_periodo # Libera memória
+            del df_exp_brasil_periodo 
             
             participacao_mg_brasil_exp = calcular_participacao(exportacao_mg_para_pais, exportacao_brasil_pais)
             posicao_mg_pais_exp = calcular_posicao_estado_pais(df_exp_ano_estados, codigos_paises, ano_completo, ultimo_mes_disponivel)
-            
-            # Cálculos Produtos Exportação
             produtos_exportacao = agregar_dados_por_produto(df_exp_ano_mg_paises.copy(), df_ncm, ano_completo, ultimo_mes_disponivel)
             
-            # --- 2b. Municípios Exportação ---
             st.info("Processando dados de Exportação (Municípios)...")
             df_exp_mun = carregar_dataframe(url_exp_mun, f"EXP_{ano_selecionado}_MUN.csv", usecols=MUN_COLS)
             if df_exp_mun is None:
@@ -727,7 +710,6 @@ if st.button(" Iniciar Geração do Relatório"):
                 df_exp_mun_filtrado = df_exp_mun_filtrado[df_exp_mun_filtrado['CO_MES'] <= ultimo_mes_disponivel]
             exportacoes_por_municipio, total_exportacoes_municipios = agregar_dados_por_municipio(df_exp_mun_filtrado, ano_completo, ultimo_mes_disponivel)
             
-            # --- 3. Liberar Memória (Exportação) ---
             st.info("Liberando memória de exportação...")
             del df_exp_ano, df_exp_ano_anterior, df_exp_ano_estados, df_exp_ano_mg, df_exp_ano_mg_paises, df_exp_mun, df_exp_mun_filtrado
             
@@ -740,13 +722,11 @@ if st.button(" Iniciar Geração do Relatório"):
                 st.error("Não foi possível carregar dados de importação. Abortando.")
                 st.stop()
             
-            # Cálculos NCM Importação
             df_imp_ano_estados = filtrar_dados_por_estado_e_mes(df_imp_ano, estados_brasileiros, ultimo_mes_disponivel, ano_completo)
             df_imp_ano_anterior_estados = filtrar_dados_por_estado_e_mes(df_imp_ano_anterior, estados_brasileiros, ultimo_mes_disponivel, ano_completo)
             df_imp_ano_mg = filtrar_dados_por_estado_e_mes(df_imp_ano, ['MG'], ultimo_mes_disponivel, ano_completo)
             df_imp_ano_mg_paises = filtrar_dados_por_mg_e_pais(df_imp_ano, codigos_paises, agrupado, ultimo_mes_disponivel, ano_completo)
             df_imp_ano_anterior_mg_paises = filtrar_dados_por_mg_e_pais(df_imp_ano_anterior, codigos_paises, agrupado, ultimo_mes_disponivel, ano_completo)
-
             importacao_pais_ano = df_imp_ano_mg_paises['VL_FOB'].sum()
             importacao_pais_ano_anterior = df_imp_ano_anterior_mg_paises['VL_FOB'].sum()
             
@@ -763,7 +743,7 @@ if st.button(" Iniciar Geração do Relatório"):
             if not ano_completo:
                 df_imp_ano_mg_filtered = df_imp_ano_mg[df_imp_ano_mg['CO_MES'] <= ultimo_mes_disponivel]
             importacao_mg_total_ano = df_imp_ano_mg_filtered['VL_FOB'].sum()
-            del df_imp_ano_mg_filtered # Libera memória
+            del df_imp_ano_mg_filtered 
 
             participacao_pais_mg_imp = calcular_participacao(importacao_pais_ano, importacao_mg_total_ano)
             diferenca_importacao, tipo_diferenca_imp = calcular_diferenca_percentual(importacao_pais_ano, importacao_pais_ano_anterior, ano_completo, ultimo_mes_disponivel)
@@ -773,15 +753,12 @@ if st.button(" Iniciar Geração do Relatório"):
                 df_imp_brasil_periodo = df_imp_ano[df_imp_ano['CO_MES'] <= ultimo_mes_disponivel]
             importacao_mg_para_pais = df_imp_brasil_periodo[(df_imp_brasil_periodo['SG_UF_NCM'] == 'MG') & (df_imp_brasil_periodo['CO_PAIS'].isin(codigos_paises))]['VL_FOB'].sum()
             importacao_brasil_pais = df_imp_brasil_periodo[df_imp_brasil_periodo['CO_PAIS'].isin(codigos_paises)]['VL_FOB'].sum()
-            del df_imp_brasil_periodo # Libera memória
+            del df_imp_brasil_periodo 
             
             participacao_mg_brasil_imp = calcular_participacao(importacao_mg_para_pais, importacao_brasil_pais)
             posicao_mg_pais_imp = calcular_posicao_estado_pais(df_imp_ano_estados, codigos_paises, ano_completo, ultimo_mes_disponivel)
-
-            # Cálculos Produtos Importação
             produtos_importacao = agregar_dados_por_produto(df_imp_ano_mg_paises.copy(), df_ncm, ano_completo, ultimo_mes_disponivel)
             
-            # --- 4b. Municípios Importação ---
             st.info("Processando dados de Importação (Municípios)...")
             df_imp_mun = carregar_dataframe(url_imp_mun, f"IMP_{ano_selecionado}_MUN.csv", usecols=MUN_COLS)
             if df_imp_mun is None:
@@ -793,7 +770,6 @@ if st.button(" Iniciar Geração do Relatório"):
                 df_imp_mun_filtrado = df_imp_mun_filtrado[df_imp_mun_filtrado['CO_MES'] <= ultimo_mes_disponivel]
             importacoes_por_municipio, total_importacoes_municipios = agregar_dados_por_municipio(df_imp_mun_filtrado, ano_completo, ultimo_mes_disponivel)
             
-            # --- 5. Liberar Memória (Importação) ---
             st.info("Liberando memória de importação...")
             del df_imp_ano, df_imp_ano_anterior, df_imp_ano_estados, df_imp_ano_mg, df_imp_ano_mg_paises, df_imp_mun, df_imp_mun_filtrado
 
@@ -807,7 +783,7 @@ if st.button(" Iniciar Geração do Relatório"):
             if agrupado:
                 # --- LÓGICA PARA AGRUPADOS ---
                 app = DocumentoApp(logo_path=logo_path_to_use)
-                paises_corretos = nomes_paises_validos # Usa a lista de nomes validados
+                paises_corretos = nomes_paises_validos 
                 nome_relatorio = nome_agrupamento if nome_agrupamento else ', '.join(paises_corretos)
 
                 # --- Geração de Texto ... ---
@@ -948,15 +924,12 @@ if st.button(" Iniciar Geração do Relatório"):
 
             else:
                 # --- LÓGICA PARA SEPARADOS ---
-                # A lógica interna é a mesma (EXP, DEL, IMP, DEL), mas dentro de um loop
-                
                 paises_corretos = nomes_paises_validos
                 
                 for pais in paises_corretos:
                     st.subheader(f"Processando: {pais}")
                     app = DocumentoApp(logo_path=logo_path_to_use)
                     
-                    # Recalcula os códigos para este loop específico
                     codigos_paises_loop = [obter_codigo_pais(pais)]
 
                     # --- 2. Bloco de Exportação (Separado) ---
@@ -1092,7 +1065,9 @@ if st.button(" Iniciar Geração do Relatório"):
                         nome_relatorio_capitalizado = f"{artigo.capitalize()} {nome_pais_base}"
                     else:
                         artigo = None
-                        st.warning(f"Não foi possível obter um artigo válido para '{nome_pais_base}'. Usando nome do país sem artigo.")
+                        # Aviso silencioso no log do servidor, não para o usuário
+                        print(f"Não foi possível obter um artigo válido para '{nome_pais_base}'. Usando nome do país sem artigo.")
+
 
                     contracoes_map = {'o': 'do', 'a': 'da', 'os': 'dos', 'as': 'das'}
                     preposicao_contraida = contracoes_map.get(artigo)
@@ -1310,6 +1285,5 @@ if st.session_state.arquivos_gerados:
             key=f"download_{arquivo['name']}"
         )
 
-# --- ALTERAÇÃO AQUI: Adiciona o rodapé ---
+# --- Adiciona o rodapé ---
 st.footer("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
-# --- FIM DA ALTERAÇÃO ---
