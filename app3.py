@@ -1285,21 +1285,24 @@ if st.session_state.arquivos_gerados:
             key=f"download_{arquivo['name']}"
         )
 
-# --- Bloco de Rodapé (Corrigido com Alinhamento Vertical) ---
+# --- Bloco de Rodapé (Corrigido com Logo à Esquerda) ---
 st.divider() 
 
-# --- ALTERAÇÃO AQUI: Adicionado 'vertical_alignment="center"' ---
-col1, col2 = st.columns([0.7, 0.3], vertical_alignment="center") 
+# --- ALTERAÇÃO AQUI: Proporção invertida e alinhamento mantido ---
+col1, col2 = st.columns([0.3, 0.7], vertical_alignment="center") 
 
 with col1:
-    st.caption("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
-
-with col2:
+    # Coluna 1 (menor) agora contém a logo
     logo_footer_path = "AEST Sede.png"
     if os.path.exists(logo_footer_path):
-        st.image(logo_footer_path, width=75) # Você pode ajustar o 'width'
+        st.image(logo_footer_path, width=65) # Você pode ajustar o 'width'
     else:
         st.caption("Logo AEST não encontrada.")
+
+with col2:
+    # Coluna 2 (maior) agora contém o texto
+    st.caption("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
+
 
 
 
