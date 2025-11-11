@@ -11,7 +11,6 @@ import re
 # --- CONFIGURAÇÕES GLOBAIS ---
 requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
 
-# Dicionário de meses
 MESES_MAPA = {
     "Janeiro": 1, "Fevereiro": 2, "Março": 3, "Abril": 4, "Maio": 5, "Junho": 6,
     "Julho": 7, "Agosto": 8, "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12
@@ -92,28 +91,41 @@ def obter_mapa_codigos_municipios():
     df_mun = carregar_dataframe(url_uf_mun, "UF_MUN.csv", usecols=['SG_UF', 'NO_MUN', 'CO_MUN_GEO'], mostrar_progresso=False)
     if df_mun is not None:
         df_mun_mg = df_mun[df_mun['SG_UF'] == 'MG']
+        # Mapeia Nome para CO_MUN_GEO
         return pd.Series(df_mun_mg.CO_MUN_GEO.values, index=df_mun_mg.NO_MUN).to_dict()
     return {}
 
 def formatar_valor(valor):
+    prefixo = ""
+    if valor < 0:
+        prefixo = "-"
+        valor = abs(valor)
+
     if valor >= 1_000_000_000:
-        return f"US$ {valor/1_000_000_000:.2f} Bilhões"
+        valor_formatado_str = f"{(valor / 1_000_000_000):.2f}".replace('.',',')
+        unidade = "bilhão" if (valor / 1_000_000_000) < 2 else "bilhões"
+        return f"{prefixo}US$ {valor_formatado_str} {unidade}"
     if valor >= 1_000_000:
-        return f"US$ {valor/1_000_000:.2f} Milhões"
+        valor_formatado_str = f"{(valor / 1_000_000):.2f}".replace('.',',')
+        unidade = "milhão" if (valor / 1_000_000) < 2 else "milhões"
+        return f"{prefixo}US$ {valor_formatado_str} {unidade}"
     if valor >= 1_000:
-        return f"US$ {valor/1_000:.2f} Mil"
-    return f"US$ {valor:.2f}"
+        valor_formatado_str = f"{(valor / 1_000):.2f}".replace('.',',')
+        return f"{prefixo}US$ {valor_formatado_str} mil"
+    
+    valor_formatado_str = f"{valor:.2f}".replace('.',',')
+    return f"{prefixo}US$ {valor_formatado_str}"
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 
-st.set_page_config(page_title="Análise por Município", layout="wide")
+# st.set_page_config(page_title="Análise por Município", layout="wide") # Config é feito no app.py
 st.sidebar.empty()
 logo_sidebar_path = "LogoMinasGerais.png"
 if os.path.exists(logo_sidebar_path):
     st.sidebar.image(logo_sidebar_path, width=200)
 
 st.header("1. Configurações da Análise Municipal")
-st.warning("⚠️ **Aviso de Performance:** Esta análise é muito pesada e pode falhar ou demorar vários minutos.")
+st.warning("⚠️ **Aviso de Performance:** Esta análise carrega arquivos de dados muito grandes (mais de 1.5 GB por ano) e **não funcionará** no plano gratuito do Streamlit Cloud (limite de 1GB RAM). Use uma plataforma com mais memória (como Hugging Face Spaces ou um servidor local).")
 
 lista_de_municipios = obter_lista_de_municipios()
 mapa_codigos_municipios = obter_mapa_codigos_municipios()
@@ -129,7 +141,7 @@ with col1:
     municipios_selecionados = st.multiselect(
         "Selecione o(s) município(s):",
         options=lista_de_municipios,
-        default=["Belo Horizonte", "Extrema"],
+        default=["Belo Horizonte"],
         help="Você pode digitar para pesquisar."
     )
 
@@ -151,9 +163,9 @@ if st.button("Iniciar Análise por Município"):
     with st.spinner(f"Processando dados municipais para {', '.join(municipios_selecionados)}..."):
         try:
             # --- Validação ---
-            codigos_municipios = [mapa_codigos_municipios[m] for m in municipios_selecionados]
+            codigos_municipios = [mapa_codigos_municipios.get(m) for m in municipios_selecionados if m in mapa_codigos_municipios]
             if not codigos_municipios:
-                st.error("Nenhum município selecionado.")
+                st.error("Nenhum município selecionado ou válido.")
                 st.stop()
             
             # --- URLs ---
@@ -168,15 +180,14 @@ if st.button("Iniciar Análise por Município"):
             df_imp_mun_princ = carregar_dataframe(url_imp_mun_principal, f"IMP_{ano_principal}_MUN.csv", usecols=MUN_COLS, dtypes=MUN_DTYPES)
             df_imp_mun_comp = carregar_dataframe(url_imp_mun_comparacao, f"IMP_{ano_comparacao}_MUN.csv", usecols=MUN_COLS, dtypes=MUN_DTYPES)
 
-            if df_exp_mun_princ is None or df_imp_mun_princ is None:
-                st.error("Falha ao carregar arquivos de dados. Tente novamente.")
+            if df_exp_mun_princ is None or df_imp_mun_princ is None or df_exp_mun_comp is None or df_imp_mun_comp is None:
+                st.error("Falha ao carregar arquivos de dados municipais. Tente novamente.")
                 st.stop()
             
             # --- Filtro de Meses ---
             if meses_selecionados:
                 meses_para_filtrar = [MESES_MAPA[m] for m in meses_selecionados]
             else:
-                # Se vazio, pega todos os meses disponíveis no ano principal
                 meses_para_filtrar = list(range(1, df_exp_mun_princ['CO_MES'].max() + 1))
 
             # --- Processamento Exportação ---
@@ -185,19 +196,30 @@ if st.button("Iniciar Análise por Município"):
             df_exp_mun_comp_f = df_exp_mun_comp[(df_exp_mun_comp['CO_MUN'].isin(codigos_municipios)) & (df_exp_mun_comp['CO_MES'].isin(meses_para_filtrar))]
             
             exp_paises_princ = df_exp_mun_princ_f.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
-            exp_paises_comp = df_exp_mun_comp_f.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
-
+            exp_paises_comp = df_exp_mun_comp_f.groupby('CO_PAIS')['VL_FOB'].sum().reset_index()
+            
+            # Mapeia nomes e formata valores
             exp_paises_princ['País'] = exp_paises_princ['CO_PAIS'].map(mapa_nomes_paises).fillna("Desconhecido")
-            exp_paises_princ[f'Valor {ano_principal}'] = exp_paises_princ['VL_FOB'].apply(formatar_valor)
+            exp_paises_princ[f'Valor {ano_principal} (US$)'] = exp_paises_princ['VL_FOB']
             
             exp_paises_comp['País'] = exp_paises_comp['CO_PAIS'].map(mapa_nomes_paises).fillna("Desconhecido")
-            exp_paises_comp[f'Valor {ano_comparacao}'] = exp_paises_comp['VL_FOB'].apply(formatar_valor)
+            exp_paises_comp[f'Valor {ano_comparacao} (US$)'] = exp_paises_comp['VL_FOB']
+
+            # Junta os dois anos
+            exp_final = pd.merge(exp_paises_princ[['País', f'Valor {ano_principal} (US$)']], 
+                                 exp_paises_comp[['País', f'Valor {ano_comparacao} (US$)']], 
+                                 on="País", how="outer").fillna(0)
             
-            exp_final = pd.merge(exp_paises_princ[['País', f'Valor {ano_principal}']], 
-                                 exp_paises_comp[['País', f'Valor {ano_comparacao}']], 
-                                 on="País", how="outer").fillna("US$ 0.00")
+            # Calcula Variação
+            exp_final['Variação %'] = 100 * (exp_final[f'Valor {ano_principal} (US$)'] - exp_final[f'Valor {ano_comparacao} (US$)']) / exp_final[f'Valor {ano_comparacao} (US$)']
+            exp_final['Variação %'] = exp_final['Variação %'].fillna(0).round(2) # Substitui inf por 0
+
+            # Formata valores em US$
+            exp_final[f'Valor {ano_principal}'] = exp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
+            exp_final[f'Valor {ano_comparacao}'] = exp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
             
-            st.dataframe(exp_final.head(10))
+            st.dataframe(exp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(20)
+                         [['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']])
             
             del df_exp_mun_princ, df_exp_mun_comp, df_exp_mun_princ_f, df_exp_mun_comp_f, exp_paises_princ, exp_paises_comp, exp_final
 
@@ -207,19 +229,26 @@ if st.button("Iniciar Análise por Município"):
             df_imp_mun_comp_f = df_imp_mun_comp[(df_imp_mun_comp['CO_MUN'].isin(codigos_municipios)) & (df_imp_mun_comp['CO_MES'].isin(meses_para_filtrar))]
 
             imp_paises_princ = df_imp_mun_princ_f.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
-            imp_paises_comp = df_imp_mun_comp_f.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
+            imp_paises_comp = df_imp_mun_comp_f.groupby('CO_PAIS')['VL_FOB'].sum().reset_index()
 
             imp_paises_princ['País'] = imp_paises_princ['CO_PAIS'].map(mapa_nomes_paises).fillna("Desconhecido")
-            imp_paises_princ[f'Valor {ano_principal}'] = imp_paises_princ['VL_FOB'].apply(formatar_valor)
+            imp_paises_princ[f'Valor {ano_principal} (US$)'] = imp_paises_princ['VL_FOB']
             
             imp_paises_comp['País'] = imp_paises_comp['CO_PAIS'].map(mapa_nomes_paises).fillna("Desconhecido")
-            imp_paises_comp[f'Valor {ano_comparacao}'] = imp_paises_comp['VL_FOB'].apply(formatar_valor)
+            imp_paises_comp[f'Valor {ano_comparacao} (US$)'] = imp_paises_comp['VL_FOB']
             
-            imp_final = pd.merge(imp_paises_princ[['País', f'Valor {ano_principal}']], 
-                                 imp_paises_comp[['País', f'Valor {ano_comparacao}']], 
-                                 on="País", how="outer").fillna("US$ 0.00")
+            imp_final = pd.merge(imp_paises_princ[['País', f'Valor {ano_principal} (US$)']], 
+                                 imp_paises_comp[['País', f'Valor {ano_comparacao} (US$)']], 
+                                 on="País", how="outer").fillna(0)
+
+            imp_final['Variação %'] = 100 * (imp_final[f'Valor {ano_principal} (US$)'] - imp_final[f'Valor {ano_comparacao} (US$)']) / imp_final[f'Valor {ano_comparacao} (US$)']
+            imp_final['Variação %'] = imp_final['Variação %'].fillna(0).round(2)
             
-            st.dataframe(imp_final.head(10))
+            imp_final[f'Valor {ano_principal}'] = imp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
+            imp_final[f'Valor {ano_comparacao}'] = imp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
+
+            st.dataframe(imp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(20)
+                         [['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']])
 
             del df_imp_mun_princ, df_imp_mun_comp, df_imp_mun_princ_f, df_imp_mun_comp_f, imp_paises_princ, imp_paises_comp, imp_final
 
