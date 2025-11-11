@@ -158,7 +158,22 @@ with col2:
         help="Selecione os meses. Se deixar em branco, o ano inteiro será analisado."
     )
 
-st.header("2. Gerar Análise")
+# --- ALTERAÇÃO AQUI: Lógica de Agrupamento ---
+agrupado = True # Padrão é agrupado
+if len(produtos_selecionados) > 1:
+    st.header("2. Opções de Agrupamento")
+    agrupamento_input = st.radio(
+        "Deseja que os dados sejam agrupados ou separados?",
+        ("agrupados", "separados"),
+        index=0,
+        horizontal=True
+    )
+    agrupado = (agrupamento_input == "agrupados")
+    st.header("3. Gerar Análise")
+else:
+    st.header("2. Gerar Análise") # Mantém a numeração correta
+# --- FIM DA ALTERAÇÃO ---
+
 
 if st.button("Iniciar Análise por Produto"):
     
@@ -168,8 +183,6 @@ if st.button("Iniciar Análise por Produto"):
             if not produtos_selecionados:
                 st.error("Nenhum produto selecionado.")
                 st.stop()
-            # Extrai apenas os códigos SH4
-            codigos_sh4_selecionados = [s.split(" - ")[0] for s in produtos_selecionados]
             
             # --- URLs ---
             url_exp_ano_principal = f"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/ncm/EXP_{ano_principal}.csv"
@@ -193,73 +206,91 @@ if st.button("Iniciar Análise por Produto"):
             else:
                 meses_para_filtrar = list(range(1, df_exp_princ['CO_MES'].max() + 1))
             
-            # --- Adiciona coluna SH4 e Filtra ---
-            st.subheader(f"Análise de: {', '.join(produtos_selecionados)}")
-            
+            # --- Adiciona coluna SH4 ---
             df_exp_princ['SH4'] = df_exp_princ['CO_NCM'].apply(get_sh4)
             df_exp_comp['SH4'] = df_exp_comp['CO_NCM'].apply(get_sh4)
             df_imp_princ['SH4'] = df_imp_princ['CO_NCM'].apply(get_sh4)
             df_imp_comp['SH4'] = df_imp_comp['CO_NCM'].apply(get_sh4)
             
-            # --- Processamento Exportação ---
-            st.header("Principais Destinos (Exportação de MG)")
+            # --- Lógica de Loop (Agrupado vs Separado) ---
             
-            df_exp_princ_f = df_exp_princ[(df_exp_princ['SG_UF_NCM'] == 'MG') & (df_exp_princ['SH4'].isin(codigos_sh4_selecionados)) & (df_exp_princ['CO_MES'].isin(meses_para_filtrar))]
-            df_exp_comp_f = df_exp_comp[(df_exp_comp['SG_UF_NCM'] == 'MG') & (df_exp_comp['SH4'].isin(codigos_sh4_selecionados)) & (df_exp_comp['CO_MES'].isin(meses_para_filtrar))]
-            
-            exp_paises_princ = df_exp_princ_f.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
-            exp_paises_comp = df_exp_comp_f.groupby('CO_PAIS')['VL_FOB'].sum().reset_index()
+            if not agrupado:
+                produtos_para_processar = produtos_selecionados
+            else:
+                # Se agrupado, processa a lista inteira como um único item
+                produtos_para_processar = [", ".join(produtos_selecionados)] 
 
-            exp_paises_princ['País'] = exp_paises_princ['CO_PAIS'].map(mapa_nomes_paises).fillna("Desconhecido")
-            exp_paises_princ[f'Valor {ano_principal} (US$)'] = exp_paises_princ['VL_FOB']
-            
-            exp_paises_comp['País'] = exp_paises_comp['CO_PAIS'].map(mapa_nomes_paises).fillna("Desconhecido")
-            exp_paises_comp[f'Valor {ano_comparacao} (US$)'] = exp_paises_comp['VL_FOB']
-            
-            exp_final = pd.merge(exp_paises_princ[['País', f'Valor {ano_principal} (US$)']], 
-                                 exp_paises_comp[['País', f'Valor {ano_comparacao} (US$)']], 
-                                 on="País", how="outer").fillna(0)
-            
-            exp_final['Variação %'] = 100 * (exp_final[f'Valor {ano_principal} (US$)'] - exp_final[f'Valor {ano_comparacao} (US$)']) / exp_final[f'Valor {ano_comparacao} (US$)']
-            exp_final['Variação %'] = exp_final['Variação %'].fillna(0).round(2)
+            for produto_nome in produtos_para_processar:
+                
+                if agrupado:
+                    st.subheader(f"Análise Agrupada de: {produto_nome}")
+                    codigos_sh4_loop = [s.split(" - ")[0] for s in produtos_selecionados]
+                else:
+                    st.subheader(f"Análise de: {produto_nome}")
+                    codigos_sh4_loop = [produto_nome.split(" - ")[0]]
 
-            exp_final[f'Valor {ano_principal}'] = exp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
-            exp_final[f'Valor {ano_comparacao}'] = exp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
-            
-            st.dataframe(exp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(20)
-                         [['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']])
-            
-            del df_exp_princ, df_exp_comp, df_exp_princ_f, df_exp_comp_f, exp_paises_princ, exp_paises_comp, exp_final
+                # --- Processamento Exportação ---
+                st.header("Principais Destinos (Exportação de MG)")
+                
+                df_exp_princ_f = df_exp_princ[(df_exp_princ['SG_UF_NCM'] == 'MG') & (df_exp_princ['SH4'].isin(codigos_sh4_loop)) & (df_exp_princ['CO_MES'].isin(meses_para_filtrar))]
+                df_exp_comp_f = df_exp_comp[(df_exp_comp['SG_UF_NCM'] == 'MG') & (df_exp_comp['SH4'].isin(codigos_sh4_loop)) & (df_exp_comp['CO_MES'].isin(meses_para_filtrar))]
+                
+                exp_paises_princ = df_exp_princ_f.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
+                exp_paises_comp = df_exp_comp_f.groupby('CO_PAIS')['VL_FOB'].sum().reset_index()
 
-            # --- Processamento Importação ---
-            st.header("Principais Origens (Importação de MG)")
-            
-            df_imp_princ_f = df_imp_princ[(df_imp_princ['SG_UF_NCM'] == 'MG') & (df_imp_princ['SH4'].isin(codigos_sh4_selecionados)) & (df_imp_princ['CO_MES'].isin(meses_para_filtrar))]
-            df_imp_comp_f = df_imp_comp[(df_imp_comp['SG_UF_NCM'] == 'MG') & (df_imp_comp['SH4'].isin(codigos_sh4_selecionados)) & (df_imp_comp['CO_MES'].isin(meses_para_filtrar))]
+                exp_paises_princ['País'] = exp_paises_princ['CO_PAIS'].map(mapa_nomes_paises).fillna("Desconhecido")
+                exp_paises_princ[f'Valor {ano_principal} (US$)'] = exp_paises_princ['VL_FOB']
+                
+                exp_paises_comp['País'] = exp_paises_comp['CO_PAIS'].map(mapa_nomes_paises).fillna("Desconhecido")
+                exp_paises_comp[f'Valor {ano_comparacao} (US$)'] = exp_paises_comp['VL_FOB']
+                
+                exp_final = pd.merge(exp_paises_princ[['País', f'Valor {ano_principal} (US$)']], 
+                                     exp_paises_comp[['País', f'Valor {ano_comparacao} (US$)']], 
+                                     on="País", how="outer").fillna(0)
+                
+                exp_final['Variação %'] = 100 * (exp_final[f'Valor {ano_principal} (US$)'] - exp_final[f'Valor {ano_comparacao} (US$)']) / exp_final[f'Valor {ano_comparacao} (US$)']
+                exp_final['Variação %'] = exp_final['Variação %'].fillna(0).round(2)
 
-            imp_paises_princ = df_imp_princ_f.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
-            imp_paises_comp = df_imp_comp_f.groupby('CO_PAIS')['VL_FOB'].sum().reset_index()
+                exp_final[f'Valor {ano_principal}'] = exp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
+                exp_final[f'Valor {ano_comparacao}'] = exp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
+                
+                st.dataframe(exp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(20)
+                             [['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']])
+                
+                del df_exp_princ_f, df_exp_comp_f, exp_paises_princ, exp_paises_comp, exp_final
 
-            imp_paises_princ['País'] = imp_paises_princ['CO_PAIS'].map(mapa_nomes_paises).fillna("Desconhecido")
-            imp_paises_princ[f'Valor {ano_principal} (US$)'] = imp_paises_princ['VL_FOB']
-            
-            imp_paises_comp['País'] = imp_paises_comp['CO_PAIS'].map(mapa_nomes_paises).fillna("Desconhecido")
-            imp_paises_comp[f'Valor {ano_comparacao} (US$)'] = imp_paises_comp['VL_FOB']
-            
-            imp_final = pd.merge(imp_paises_princ[['País', f'Valor {ano_principal} (US$)']], 
-                                 imp_paises_comp[['País', f'Valor {ano_comparacao} (US$)']], 
-                                 on="País", how="outer").fillna(0)
+                # --- Processamento Importação ---
+                st.header("Principais Origens (Importação de MG)")
+                
+                df_imp_princ_f = df_imp_princ[(df_imp_princ['SG_UF_NCM'] == 'MG') & (df_imp_princ['SH4'].isin(codigos_sh4_loop)) & (df_imp_princ['CO_MES'].isin(meses_para_filtrar))]
+                df_imp_comp_f = df_imp_comp[(df_imp_comp['SG_UF_NCM'] == 'MG') & (df_imp_comp['SH4'].isin(codigos_sh4_loop)) & (df_imp_comp['CO_MES'].isin(meses_para_filtrar))]
 
-            imp_final['Variação %'] = 100 * (imp_final[f'Valor {ano_principal} (US$)'] - imp_final[f'Valor {ano_comparacao} (US$)']) / imp_final[f'Valor {ano_comparacao} (US$)']
-            imp_final['Variação %'] = imp_final['Variação %'].fillna(0).round(2)
-            
-            imp_final[f'Valor {ano_principal}'] = imp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
-            imp_final[f'Valor {ano_comparacao}'] = imp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
+                imp_paises_princ = df_imp_princ_f.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
+                imp_paises_comp = df_imp_comp_f.groupby('CO_PAIS')['VL_FOB'].sum().reset_index()
 
-            st.dataframe(imp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(20)
-                         [['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']])
+                imp_paises_princ['País'] = imp_paises_princ['CO_PAIS'].map(mapa_nomes_paises).fillna("Desconhecido")
+                imp_paises_princ[f'Valor {ano_principal} (US$)'] = imp_paises_princ['VL_FOB']
+                
+                imp_paises_comp['País'] = imp_paises_comp['CO_PAIS'].map(mapa_nomes_paises).fillna("Desconhecido")
+                imp_paises_comp[f'Valor {ano_comparacao} (US$)'] = imp_paises_comp['VL_FOB']
+                
+                imp_final = pd.merge(imp_paises_princ[['País', f'Valor {ano_principal} (US$)']], 
+                                     imp_paises_comp[['País', f'Valor {ano_comparacao} (US$)']], 
+                                     on="País", how="outer").fillna(0)
+
+                imp_final['Variação %'] = 100 * (imp_final[f'Valor {ano_principal} (US$)'] - imp_final[f'Valor {ano_comparacao} (US$)']) / imp_final[f'Valor {ano_comparacao} (US$)']
+                imp_final['Variação %'] = imp_final['Variação %'].fillna(0).round(2)
+                
+                imp_final[f'Valor {ano_principal}'] = imp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
+                imp_final[f'Valor {ano_comparacao}'] = imp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
+
+                st.dataframe(imp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(20)
+                             [['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']])
+                
+                del df_imp_princ_f, df_imp_comp_f, imp_paises_princ, imp_paises_comp, imp_final
             
-            del df_imp_princ, df_imp_comp, df_imp_princ_f, df_imp_comp_f, imp_paises_princ, imp_paises_comp, imp_final
+            # Limpa os DFs principais da memória após o loop
+            del df_exp_princ, df_exp_comp, df_imp_princ, df_imp_comp
 
         except Exception as e:
             st.error(f"Ocorreu um erro inesperado durante a análise de produto:")
