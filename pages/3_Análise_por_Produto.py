@@ -23,21 +23,6 @@ MESES_MAPA = {
 }
 LISTA_MESES = list(MESES_MAPA.keys())
 
-ARTIGOS_PAISES_MAP = {
-    "Afeganistão": "o", "África do Sul": "a", "Alemanha": "a", "Arábia Saudita": "a",
-    "Argentina": "a", "Austrália": "a", "Bélgica": "a", "Brasil": "o", "Canadá": "o",
-    "Chade": "o", "Chile": "o", "China": "a", "Colômbia": "a", "Congo": "o",
-    "Coreia do Norte": "a", "Coreia do Sul": "a", "Costa Rica": "a", "Equador": "o",
-    "Egito": "o", "Emirados Árabes Unidos": "os", "Espanha": "a", "Estados Unidos": "os",
-    "Filipinas": "as", "França": "a", "Holanda": "a", "Índia": "a", "Indonésia": "a",
-    "Inglaterra": "a", "Irã": "o", "Itália": "a", "Japão": "o", "Líbano": "o",
-    "Malásia": "a", "México": "o", "Nicarágua": "a", "Noruega": "a", "Nova Zelândia": "a",
-    "Países Baixos": "os", "Panamá": "o", "Paraguai": "o", "Pérsia": "a", "Peru": "o",
-    "Reino Unido": "o", "República Checa": "a", "República Dominicana": "a",
-    "Romênia": "a", "Rússia": "a", "Singapura": "a", "Suécia": "a", "Uruguai": "o",
-    "Venezuela": "a", "Vietnã": "o"
-}
-
 # Colunas necessárias
 NCM_COLS = ['VL_FOB', 'CO_PAIS', 'CO_MES', 'SG_UF_NCM', 'CO_NCM']
 NCM_DTYPES = {'CO_NCM': str, 'CO_SH4': str}
@@ -125,9 +110,8 @@ def obter_lista_de_produtos_sh4(codigos_sh2_selecionados):
 
     # Filtra por SH2 se algum for selecionado
     if codigos_sh2_selecionados:
-        # Converte os códigos SH2 (que são int) para string com 2 dígitos
+        # Converte os códigos SH2 (que são int no CSV) para string com 2 dígitos
         codigos_sh2_str = [str(c).zfill(2) for c in codigos_sh2_selecionados]
-        # Filtra o DataFrame
         df_sh4 = df_sh4[df_sh4['CO_SH2'].astype(str).str.zfill(2).isin(codigos_sh2_str)]
 
     # --- ALTERAÇÃO AQUI: zfill(4) para códigos SH4 ---
@@ -146,7 +130,6 @@ def get_sh4(co_ncm):
     # Garante que o NCM tenha 8 dígitos, preenchendo com 0 à esquerda se necessário
     co_ncm_str = co_ncm_str.zfill(8)
     
-    # A lógica original para SH4 estava pegando 3 dígitos para NCMs de 7.
     # A lógica correta é sempre pegar os 4 primeiros dígitos de um NCM de 8.
     return co_ncm_str[:4]
 
@@ -212,6 +195,14 @@ class DocumentoApp:
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     def adicionar_conteudo_formatado(self, texto):
+        p = self.doc.add_paragraph()
+        p.paragraph_format.first_line_indent = Cm(1.25)
+        run = p.add_run(texto)
+        run.font.name = 'Times New Roman'
+        run.font.size = Pt(12)
+        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        
+    def adicionar_paragrafo(self, texto): # Função que estava faltando no original
         p = self.doc.add_paragraph()
         p.paragraph_format.first_line_indent = Cm(1.25)
         run = p.add_run(texto)
@@ -355,15 +346,17 @@ with col1:
         help="O ano contra o qual você quer comparar.",
         on_change=clear_download_state # Adiciona callback
     )
+    # --- ALTERAÇÃO AQUI: Filtro de Mês movido para col1 ---
     meses_selecionados = st.multiselect(
         "Meses de Análise (opcional):",
         options=LISTA_MESES,
         help="Selecione os meses. Se deixar em branco, o ano inteiro será analisado.",
         on_change=clear_download_state # Adiciona callback
     )
+    # --- FIM DA ALTERAÇÃO ---
 
 with col2:
-    # Filtro SH2
+    # --- Filtro SH2 ---
     sh2_selecionados_nomes = st.multiselect(
         "Filtrar por Capítulo (SH2) (opcional):",
         options=lista_de_produtos_sh2,
@@ -471,7 +464,7 @@ if st.button("Iniciar Análise por Produto"):
                 else:
                     st.subheader(f"Análise de: {produto_nome_completo}")
                     codigos_sh4_loop = [produto_nome_completo.split(" - ")[0]]
-                    nome_limpo_arquivo = sanitize_filename(produto_nome_completo.split(" - ")[1])
+                    nome_limpo_arquivo = sanitize_filename(produto_nome_completo.split(" - ")[1]) # Pega só o nome
                     titulo_doc = f"Briefing - {nome_limpo_arquivo} - {ano_principal}"
                     produto_nome_doc = f"de {produto_nome_completo.split(' - ')[1]}" # Nome para o texto
                 
@@ -508,7 +501,7 @@ if st.button("Iniciar Análise por Produto"):
                 exp_final[f'Valor {ano_comparacao}'] = exp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
                 
                 # --- ALTERAÇÃO AQUI: Ordena e esconde o índice ---
-                df_display_exp = exp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False)
+                df_display_exp = exp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).reset_index(drop=True)
                 st.dataframe(
                     df_display_exp[['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']].head(10),
                     hide_index=True
@@ -556,7 +549,7 @@ if st.button("Iniciar Análise por Produto"):
                 imp_final[f'Valor {ano_comparacao}'] = imp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
 
                 # --- ALTERAÇÃO AQUI: Ordena e esconde o índice ---
-                df_display_imp = imp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False)
+                df_display_imp = imp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).reset_index(drop=True)
                 st.dataframe(
                     df_display_imp[['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']].head(10),
                     hide_index=True
