@@ -25,9 +25,9 @@ Esta é uma ferramenta automatizada para unificar as automações criadas pela A
 
 Use o menu lateral (à esquerda) para selecionar o tipo de análise que deseja realizar:
 
-* 1. Análise por País: Permite filtrar por um ou mais países e analisar o comércio de Minas Gerais com eles (produtos e municípios envolvidos).
-* 2. Análise por Município: Permite filtrar por um ou mais municípios de MG e analisar seus principais destinos/origens e produtos.
-* 3. Análise por Produto: Permite filtrar por NCM e analisar os principais destinos/origens e municípios.
+ 1. Análise por País: Permite filtrar por um ou mais países e analisar o comércio de Minas Gerais com eles (produtos e municípios envolvidos).
+ 2. Análise por Município: Permite filtrar por um ou mais municípios de MG e analisar seus principais destinos/origens e produtos.
+ 3. Análise por Produto: Permite filtrar por NCM e analisar os principais destinos/origens e municípios.
 
 """)
 
@@ -42,6 +42,7 @@ with col1:
         st.caption("Logo AEST não encontrada.")
 with col2:
     st.caption("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
+
 
 
 
