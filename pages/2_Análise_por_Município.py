@@ -24,8 +24,8 @@ MESES_MAPA = {
 LISTA_MESES = list(MESES_MAPA.keys())
 
 # Colunas necessárias
-NCM_COLS = ['VL_FOB', 'CO_PAIS', 'CO_MES', 'SG_UF_NCM', 'CO_NCM']
-NCM_DTYPES = {'CO_NCM': str, 'CO_SH4': str}
+MUN_COLS = ['VL_FOB', 'CO_PAIS', 'CO_MES', 'SG_UF_MUN', 'CO_MUN']
+MUN_DTYPES = {'CO_MUN': str}
 
 # --- FUNÇÕES DE LÓGICA (Helpers) ---
 
@@ -80,58 +80,26 @@ def obter_dados_paises():
     return {}
 
 @st.cache_data
-def obter_dados_produtos_ncm():
-    """Carrega a tabela NCM completa (SH2 e SH4) e armazena em cache."""
-    url_ncm = "https://balanca.economia.gov.br/balanca/bd/tabelas/NCM_SH.csv"
-    df_ncm = carregar_dataframe(url_ncm, "NCM_SH.csv", usecols=['CO_SH2', 'NO_SH2_POR', 'CO_SH4', 'NO_SH4_POR'], mostrar_progresso=False)
-    if df_ncm is not None:
-        return df_ncm
-    return None
+def obter_lista_de_municipios():
+    """Retorna uma lista de nomes de municípios de MG."""
+    url_uf_mun = "https://balanca.economia.gov.br/balanca/bd/tabelas/UF_MUN.csv"
+    df_mun = carregar_dataframe(url_uf_mun, "UF_MUN.csv", usecols=['SG_UF', 'NO_MUN', 'CO_MUN_GEO'], mostrar_progresso=False)
+    if df_mun is not None:
+        lista_mun = df_mun[df_mun['SG_UF'] == 'MG']['NO_MUN'].unique().tolist()
+        lista_mun.sort()
+        return lista_mun
+    return ["Erro ao carregar lista de municípios"]
 
-def obter_lista_de_produtos_sh2():
-    """Retorna uma lista de capítulos (SH2)."""
-    df_ncm = obter_dados_produtos_ncm()
-    if df_ncm is not None:
-        df_sh2 = df_ncm.drop_duplicates(subset=['CO_SH2']).dropna()
-        # --- ALTERAÇÃO AQUI: zfill(2) para códigos SH2 ---
-        df_sh2['Display'] = df_sh2['CO_SH2'].astype(str).str.zfill(2) + " - " + df_sh2['NO_SH2_POR']
-        lista_produtos = df_sh2['Display'].unique().tolist()
-        lista_produtos.sort()
-        return lista_produtos
-    return ["Erro ao carregar lista de capítulos"]
-
-def obter_lista_de_produtos_sh4(codigos_sh2_selecionados):
-    """Retorna uma lista de produtos (SH4), opcionalmente filtrada por SH2."""
-    df_ncm = obter_dados_produtos_ncm()
-    if df_ncm is None:
-        return ["Erro ao carregar lista de produtos"]
-
-    df_sh4 = df_ncm.drop_duplicates(subset=['CO_SH4']).dropna(subset=['CO_SH4', 'NO_SH4_POR'])
-
-    # Filtra por SH2 se algum for selecionado
-    if codigos_sh2_selecionados:
-        # Converte os códigos SH2 (que são int no CSV) para string com 2 dígitos
-        codigos_sh2_str = [str(c).zfill(2) for c in codigos_sh2_selecionados]
-        df_sh4 = df_sh4[df_sh4['CO_SH2'].astype(str).str.zfill(2).isin(codigos_sh2_str)]
-
-    # --- ALTERAÇÃO AQUI: zfill(4) para códigos SH4 ---
-    df_sh4['Display'] = df_sh4['CO_SH4'].astype(str).str.zfill(4) + " - " + df_sh4['NO_SH4_POR']
-    lista_produtos = df_sh4['Display'].unique().tolist()
-    lista_produtos.sort()
-    return lista_produtos
-
-
-def get_sh4(co_ncm):
-    """Extrai SH4 de um CO_NCM."""
-    co_ncm_str = str(co_ncm).strip()
-    if pd.isna(co_ncm_str) or co_ncm_str == "":
-        return None
-    
-    # Garante que o NCM tenha 8 dígitos, preenchendo com 0 à esquerda se necessário
-    co_ncm_str = co_ncm_str.zfill(8)
-    
-    # A lógica correta é sempre pegar os 4 primeiros dígitos de um NCM de 8.
-    return co_ncm_str[:4]
+@st.cache_data
+def obter_mapa_codigos_municipios():
+    """Retorna um mapa de Nome -> Código (CO_MUN_GEO) para municípios de MG."""
+    url_uf_mun = "https://balanca.economia.gov.br/balanca/bd/tabelas/UF_MUN.csv"
+    df_mun = carregar_dataframe(url_uf_mun, "UF_MUN.csv", usecols=['SG_UF', 'NO_MUN', 'CO_MUN_GEO'], mostrar_progresso=False)
+    if df_mun is not None:
+        df_mun_mg = df_mun[df_mun['SG_UF'] == 'MG']
+        # Mapeia Nome para CO_MUN_GEO
+        return pd.Series(df_mun_mg.CO_MUN_GEO.values, index=df_mun_mg.NO_MUN).to_dict()
+    return {}
 
 def formatar_valor(valor):
     prefixo = ""
@@ -210,6 +178,7 @@ class DocumentoApp:
         run.font.size = Pt(12)
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
 
+    # --- CORREÇÃO AQUI: Removida a linha solta que causava o SyntaxError ---
     def adicionar_titulo(self, texto):
         p = self.doc.add_paragraph()
         if self.subsecao_atual == 0:
@@ -220,6 +189,7 @@ class DocumentoApp:
         run.font.size = Pt(12)
         run.bold = True
         p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    # --- FIM DA CORREÇÃO ---
 
     def nova_secao(self):
         self.secao_atual += 1
@@ -309,7 +279,6 @@ class DocumentoApp:
         file_stream.seek(0)
         
         file_bytes = file_stream.getvalue()
-        # --- ALTERAÇÃO AQUI: Mensagem de sucesso usa o nome do arquivo ---
         st.success(f"Documento '{nome_arquivo_sanitizado}' gerado com sucesso!")
         
         return file_bytes, nome_arquivo_sanitizado
@@ -322,15 +291,16 @@ logo_sidebar_path = "LogoMinasGerais.png"
 if os.path.exists(logo_sidebar_path):
     st.sidebar.image(logo_sidebar_path, width=200)
 
-st.header("1. Configurações da Análise de Produto (NCM)")
+st.header("1. Configurações da Análise Municipal")
+st.warning("⚠️ **Aviso de Performance:** Esta análise carrega arquivos de dados muito grandes (mais de 1.5 GB por ano) e **não funcionará** no plano gratuito do Streamlit Cloud (limite de 1GB RAM). Use uma plataforma com mais memória (como Hugging Face Spaces ou um servidor local).")
 
-# --- Callback para limpar o state ---
-def clear_download_state():
+def clear_download_state_mun():
     """Limpa os relatórios gerados da sessão."""
-    if 'arquivos_gerados_produto' in st.session_state:
-        st.session_state.arquivos_gerados_produto = []
+    if 'arquivos_gerados_municipio' in st.session_state:
+        st.session_state.arquivos_gerados_municipio = []
 
-lista_de_produtos_sh2 = obter_lista_de_produtos_sh2()
+lista_de_municipios = obter_lista_de_municipios()
+mapa_codigos_municipios = obter_mapa_codigos_municipios()
 mapa_nomes_paises = obter_dados_paises()
 ano_atual = datetime.now().year
 
@@ -339,54 +309,40 @@ with col1:
     ano_principal = st.number_input(
         "Ano de Referência:", min_value=1998, max_value=ano_atual, value=ano_atual,
         help="O ano principal que você quer analisar.",
-        on_change=clear_download_state # Adiciona callback
+        on_change=clear_download_state_mun
     )
+    municipios_selecionados = st.multiselect(
+        "Selecione o(s) município(s):",
+        options=lista_de_municipios,
+        # --- CORREÇÃO AQUI: Default com nome correto ---
+        default=["BELO HORIZONTE"],
+        help="Você pode digitar para pesquisar.",
+        on_change=clear_download_state_mun
+    )
+
+with col2:
     ano_comparacao = st.number_input(
         "Ano de Comparação:", min_value=1998, max_value=ano_atual, value=ano_atual - 1,
         help="O ano contra o qual você quer comparar.",
-        on_change=clear_download_state # Adiciona callback
+        on_change=clear_download_state_mun
     )
-    # --- ALTERAÇÃO AQUI: Filtro de Mês movido para col1 ---
     meses_selecionados = st.multiselect(
         "Meses de Análise (opcional):",
         options=LISTA_MESES,
         help="Selecione os meses. Se deixar em branco, o ano inteiro será analisado.",
-        on_change=clear_download_state # Adiciona callback
-    )
-    # --- FIM DA ALTERAÇÃO ---
-
-with col2:
-    # --- Filtro SH2 ---
-    sh2_selecionados_nomes = st.multiselect(
-        "Filtrar por Capítulo (SH2) (opcional):",
-        options=lista_de_produtos_sh2,
-        help="Filtre a lista de produtos SH4 abaixo.",
-        on_change=clear_download_state # Adiciona callback
-    )
-    # Extrai os códigos numéricos
-    codigos_sh2_selecionados = [int(s.split(" - ")[0]) for s in sh2_selecionados_nomes]
-    
-    # Lista de SH4 agora é filtrada pelo SH2 selecionado
-    lista_de_produtos_sh4_filtrada = obter_lista_de_produtos_sh4(codigos_sh2_selecionados)
-    
-    produtos_selecionados = st.multiselect(
-        "Selecione o(s) produto(s) (SH4):",
-        options=lista_de_produtos_sh4_filtrada, # Usa a lista filtrada
-        default=[],
-        help="Você pode digitar para pesquisar. O filtro usa os 4 dígitos do SH4.",
-        on_change=clear_download_state # Adiciona callback
+        on_change=clear_download_state_mun
     )
 
 # --- Lógica de Agrupamento ---
 agrupado = True
-if len(produtos_selecionados) > 1:
+if len(municipios_selecionados) > 1:
     st.header("2. Opções de Agrupamento")
     agrupamento_input = st.radio(
         "Deseja que os dados sejam agrupados ou separados?",
         ("agrupados", "separados"),
         index=0,
         horizontal=True,
-        on_change=clear_download_state # Adiciona callback
+        on_change=clear_download_state_mun
     )
     agrupado = (agrupamento_input == "agrupados")
     st.header("3. Gerar Análise")
@@ -394,36 +350,37 @@ else:
     st.header("2. Gerar Análise")
 
 # --- Inicialização do Session State ---
-if 'arquivos_gerados_produto' not in st.session_state:
-    st.session_state.arquivos_gerados_produto = []
+if 'arquivos_gerados_municipio' not in st.session_state:
+    st.session_state.arquivos_gerados_municipio = []
 
 
-if st.button("Iniciar Análise por Produto"):
+if st.button("Iniciar Análise por Município"):
     
-    st.session_state.arquivos_gerados_produto = []
-    logo_path_to_use = "LogoMinasGerais.png" 
+    st.session_state.arquivos_gerados_municipio = []
+    logo_path_to_use = "LogoMinasGerais.png"
     
-    with st.spinner(f"Processando dados de produto..."):
+    with st.spinner(f"Processando dados municipais para {', '.join(municipios_selecionados)}..."):
         try:
             # --- Validação ---
-            if not produtos_selecionados:
-                st.error("Nenhum produto selecionado.")
+            codigos_municipios_map = [mapa_codigos_municipios.get(m) for m in municipios_selecionados if m in mapa_codigos_municipios]
+            if not codigos_municipios_map:
+                st.error("Nenhum município selecionado ou válido.")
                 st.stop()
             
             # --- URLs ---
-            url_exp_ano_principal = f"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/ncm/EXP_{ano_principal}.csv"
-            url_exp_ano_comparacao = f"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/ncm/EXP_{ano_comparacao}.csv"
-            url_imp_ano_principal = f"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/ncm/IMP_{ano_principal}.csv"
-            url_imp_ano_comparacao = f"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/ncm/IMP_{ano_comparacao}.csv"
+            url_exp_mun_principal = f"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/mun/EXP_{ano_principal}_MUN.csv"
+            url_exp_mun_comparacao = f"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/mun/EXP_{ano_comparacao}_MUN.csv"
+            url_imp_mun_principal = f"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/mun/IMP_{ano_principal}_MUN.csv"
+            url_imp_mun_comparacao = f"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/mun/IMP_{ano_comparacao}_MUN.csv"
 
             # --- Carregamento ---
-            df_exp_princ = carregar_dataframe(url_exp_ano_principal, f"EXP_{ano_principal}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
-            df_exp_comp = carregar_dataframe(url_exp_ano_comparacao, f"EXP_{ano_comparacao}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
-            df_imp_princ = carregar_dataframe(url_imp_ano_principal, f"IMP_{ano_principal}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
-            df_imp_comp = carregar_dataframe(url_imp_ano_comparacao, f"IMP_{ano_comparacao}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
+            df_exp_mun_princ = carregar_dataframe(url_exp_mun_principal, f"EXP_{ano_principal}_MUN.csv", usecols=MUN_COLS, dtypes=MUN_DTYPES)
+            df_exp_mun_comp = carregar_dataframe(url_exp_mun_comparacao, f"EXP_{ano_comparacao}_MUN.csv", usecols=MUN_COLS, dtypes=MUN_DTYPES)
+            df_imp_mun_princ = carregar_dataframe(url_imp_mun_principal, f"IMP_{ano_principal}_MUN.csv", usecols=MUN_COLS, dtypes=MUN_DTYPES)
+            df_imp_mun_comp = carregar_dataframe(url_imp_mun_comparacao, f"IMP_{ano_comparacao}_MUN.csv", usecols=MUN_COLS, dtypes=MUN_DTYPES)
 
-            if df_exp_princ is None or df_imp_princ is None or df_exp_comp is None or df_imp_comp is None:
-                st.error("Falha ao carregar arquivos de dados NCM. Tente novamente.")
+            if df_exp_mun_princ is None or df_imp_mun_princ is None or df_exp_mun_comp is None or df_imp_mun_comp is None:
+                st.error("Falha ao carregar arquivos de dados municipais. Tente novamente.")
                 st.stop()
             
             # --- Filtro de Meses ---
@@ -432,58 +389,48 @@ if st.button("Iniciar Análise por Produto"):
                 nome_periodo = f"o período de {', '.join(meses_selecionados)} de {ano_principal}"
                 nome_periodo_comp = f"o mesmo período de {ano_comparacao}"
             else:
-                meses_para_filtrar = list(range(1, df_exp_princ['CO_MES'].max() + 1))
+                meses_para_filtrar = list(range(1, df_exp_mun_princ['CO_MES'].max() + 1))
                 nome_periodo = f"o ano de {ano_principal} (completo)"
                 nome_periodo_comp = f"o mesmo período de {ano_comparacao}"
-            
-            # --- Adiciona coluna SH4 ---
-            df_exp_princ['SH4'] = df_exp_princ['CO_NCM'].apply(get_sh4)
-            df_exp_comp['SH4'] = df_exp_comp['CO_NCM'].apply(get_sh4)
-            df_imp_princ['SH4'] = df_imp_princ['CO_NCM'].apply(get_sh4)
-            df_imp_comp['SH4'] = df_imp_comp['CO_NCM'].apply(get_sh4)
+
             
             # --- Lógica de Loop (Agrupado vs Separado) ---
-            
             if not agrupado:
-                produtos_para_processar = produtos_selecionados
+                municipios_para_processar = municipios_selecionados
             else:
-                # Se agrupado, processa a lista inteira como um único item
-                produtos_para_processar = [", ".join([p.split(' - ')[1] for p in produtos_selecionados])] # Nome amigável
+                municipios_para_processar = [", ".join(municipios_selecionados)]
 
-            for produto_nome_completo in produtos_para_processar:
+            for municipio_nome in municipios_para_processar:
                 
                 app = DocumentoApp(logo_path=logo_path_to_use)
                 
-                # --- ALTERAÇÃO AQUI: Título dinâmico ---
                 if agrupado:
-                    st.subheader(f"Análise Agrupada de: {produto_nome_completo}")
-                    codigos_sh4_loop = [s.split(" - ")[0] for s in produtos_selecionados]
-                    nome_limpo_arquivo = sanitize_filename(produto_nome_completo)
+                    st.subheader(f"Análise Agrupada de: {municipio_nome}")
+                    codigos_municipios_loop = codigos_municipios_map
+                    nome_limpo_arquivo = sanitize_filename(municipio_nome)
                     titulo_doc = f"Briefing - {nome_limpo_arquivo} (Agrupado) - {ano_principal}"
-                    produto_nome_doc = "dos produtos selecionados" # Nome para o texto
+                    nome_doc = "dos municípios selecionados"
                 else:
-                    st.subheader(f"Análise de: {produto_nome_completo}")
-                    codigos_sh4_loop = [produto_nome_completo.split(" - ")[0]]
-                    nome_limpo_arquivo = sanitize_filename(produto_nome_completo.split(" - ")[1]) # Pega só o nome
+                    st.subheader(f"Análise de: {municipio_nome}")
+                    codigos_municipios_loop = [mapa_codigos_municipios.get(municipio_nome)]
+                    nome_limpo_arquivo = sanitize_filename(municipio_nome)
                     titulo_doc = f"Briefing - {nome_limpo_arquivo} - {ano_principal}"
-                    produto_nome_doc = f"de {produto_nome_completo.split(' - ')[1]}" # Nome para o texto
+                    nome_doc = f"de {municipio_nome}"
                 
                 app.set_titulo(titulo_doc)
-                # --- FIM DA ALTERAÇÃO ---
 
                 # --- Processamento Exportação ---
-                st.header("Principais Destinos (Exportação de MG)")
+                st.header("Principais Destinos (Exportação)")
+                df_exp_mun_princ_f = df_exp_mun_princ[(df_exp_mun_princ['CO_MUN'].isin(codigos_municipios_loop)) & (df_exp_mun_princ['CO_MES'].isin(meses_para_filtrar))]
+                df_exp_mun_comp_f = df_exp_mun_comp[(df_exp_mun_comp['CO_MUN'].isin(codigos_municipios_loop)) & (df_exp_mun_comp['CO_MES'].isin(meses_para_filtrar))]
                 
-                df_exp_princ_f = df_exp_princ[(df_exp_princ['SG_UF_NCM'] == 'MG') & (df_exp_princ['SH4'].isin(codigos_sh4_loop)) & (df_exp_princ['CO_MES'].isin(meses_para_filtrar))]
-                df_exp_comp_f = df_exp_comp[(df_exp_comp['SG_UF_NCM'] == 'MG') & (df_exp_comp['SH4'].isin(codigos_sh4_loop)) & (df_exp_comp['CO_MES'].isin(meses_para_filtrar))]
-                
-                exp_total_princ = df_exp_princ_f['VL_FOB'].sum()
-                exp_total_comp = df_exp_comp_f['VL_FOB'].sum()
+                exp_total_princ = df_exp_mun_princ_f['VL_FOB'].sum()
+                exp_total_comp = df_exp_mun_comp_f['VL_FOB'].sum()
                 dif_exp, tipo_dif_exp = calcular_diferenca_percentual(exp_total_princ, exp_total_comp)
                 
-                exp_paises_princ = df_exp_princ_f.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
-                exp_paises_comp = df_exp_comp_f.groupby('CO_PAIS')['VL_FOB'].sum().reset_index()
-
+                exp_paises_princ = df_exp_mun_princ_f.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
+                exp_paises_comp = df_exp_mun_comp_f.groupby('CO_PAIS')['VL_FOB'].sum().reset_index()
+                
                 exp_paises_princ['País'] = exp_paises_princ['CO_PAIS'].map(mapa_nomes_paises).fillna("Desconhecido")
                 exp_paises_princ[f'Valor {ano_principal} (US$)'] = exp_paises_princ['VL_FOB']
                 
@@ -500,37 +447,35 @@ if st.button("Iniciar Análise por Produto"):
                 exp_final[f'Valor {ano_principal}'] = exp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
                 exp_final[f'Valor {ano_comparacao}'] = exp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
                 
-                # --- ALTERAÇÃO AQUI: Ordena e esconde o índice ---
-                df_display_exp = exp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).reset_index(drop=True)
+                df_display_exp = exp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False)
                 st.dataframe(
                     df_display_exp[['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']].head(10),
                     hide_index=True
                 )
                 
-                # --- Geração de Texto (Exportação) ---
-                texto_exp_total = f"Em {nome_periodo}, as exportações de Minas Gerais {produto_nome_doc} somaram {formatar_valor(exp_total_princ)}, {tipo_dif_exp} de {dif_exp:.1f}% em relação a {nome_periodo_comp}."
+                texto_exp_total = f"Em {nome_periodo}, as exportações {nome_doc} somaram {formatar_valor(exp_total_princ)}, {tipo_dif_exp} de {dif_exp:.1f}% em relação a {nome_periodo_comp}."
+                
                 app.nova_secao()
-                app.adicionar_titulo("Exportações de Produto")
+                app.adicionar_titulo("Exportações do Município")
                 app.adicionar_conteudo_formatado(texto_exp_total)
                 
                 if exp_total_princ > 0:
                     texto_exp_paises = "Os principais países de destino foram: " + ", ".join(df_display_exp.head(5)['País'].tolist()) + "."
                     app.adicionar_conteudo_formatado(texto_exp_paises)
                 
-                del df_exp_princ_f, df_exp_comp_f, exp_paises_princ, exp_paises_comp, exp_final, df_display_exp
+                del df_exp_mun_princ_f, df_exp_mun_comp_f, exp_paises_princ, exp_paises_comp, exp_final, df_display_exp
 
                 # --- Processamento Importação ---
-                st.header("Principais Origens (Importação de MG)")
-                
-                df_imp_princ_f = df_imp_princ[(df_imp_princ['SG_UF_NCM'] == 'MG') & (df_imp_princ['SH4'].isin(codigos_sh4_loop)) & (df_imp_princ['CO_MES'].isin(meses_para_filtrar))]
-                df_imp_comp_f = df_imp_comp[(df_imp_comp['SG_UF_NCM'] == 'MG') & (df_imp_comp['SH4'].isin(codigos_sh4_loop)) & (df_imp_comp['CO_MES'].isin(meses_para_filtrar))]
+                st.header(f"Importações de {municipio_nome}")
+                df_imp_mun_princ_f = df_imp_mun_princ[(df_imp_mun_princ['CO_MUN'].isin(codigos_municipios_loop)) & (df_imp_mun_princ['CO_MES'].isin(meses_para_filtrar))]
+                df_imp_mun_comp_f = df_imp_mun_comp[(df_imp_mun_comp['CO_MUN'].isin(codigos_municipios_loop)) & (df_imp_mun_comp['CO_MES'].isin(meses_para_filtrar))]
 
-                imp_total_princ = df_imp_princ_f['VL_FOB'].sum()
-                imp_total_comp = df_imp_comp_f['VL_FOB'].sum()
+                imp_total_princ = df_imp_mun_princ_f['VL_FOB'].sum()
+                imp_total_comp = df_imp_mun_comp_f['VL_FOB'].sum()
                 dif_imp, tipo_dif_imp = calcular_diferenca_percentual(imp_total_princ, imp_total_comp)
 
-                imp_paises_princ = df_imp_princ_f.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
-                imp_paises_comp = df_imp_comp_f.groupby('CO_PAIS')['VL_FOB'].sum().reset_index()
+                imp_paises_princ = df_imp_mun_princ_f.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
+                imp_paises_comp = df_imp_mun_comp_f.groupby('CO_PAIS')['VL_FOB'].sum().reset_index()
 
                 imp_paises_princ['País'] = imp_paises_princ['CO_PAIS'].map(mapa_nomes_paises).fillna("Desconhecido")
                 imp_paises_princ[f'Valor {ano_principal} (US$)'] = imp_paises_princ['VL_FOB']
@@ -548,65 +493,59 @@ if st.button("Iniciar Análise por Produto"):
                 imp_final[f'Valor {ano_principal}'] = imp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
                 imp_final[f'Valor {ano_comparacao}'] = imp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
 
-                # --- ALTERAÇÃO AQUI: Ordena e esconde o índice ---
-                df_display_imp = imp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).reset_index(drop=True)
+                df_display_imp = imp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False)
                 st.dataframe(
                     df_display_imp[['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']].head(10),
                     hide_index=True
                 )
                 
-                # --- Geração de Texto (Importação) ---
-                texto_imp_total = f"Em {nome_periodo}, as importações de Minas Gerais {produto_nome_doc} somaram {formatar_valor(imp_total_princ)}, {tipo_dif_imp} de {dif_imp:.1f}% em relação a {nome_periodo_comp}."
+                texto_imp_total = f"Em {nome_periodo}, as importações {nome_doc} somaram {formatar_valor(imp_total_princ)}, {tipo_dif_imp} de {dif_imp:.1f}% em relação a {nome_periodo_comp}."
                 
                 app.nova_secao()
-                app.adicionar_titulo("Importações de Produto")
+                app.adicionar_titulo("Importações do Município")
                 app.adicionar_conteudo_formatado(texto_imp_total)
-                
+
                 if imp_total_princ > 0:
                     texto_imp_paises = "Os principais países de origem foram: " + ", ".join(df_display_imp.head(5)['País'].tolist()) + "."
                     app.adicionar_conteudo_formatado(texto_imp_paises)
                 
-                del df_imp_princ_f, df_imp_comp_f, imp_paises_princ, imp_paises_comp, imp_final, df_display_imp
-            
+                del df_imp_mun_princ_f, df_imp_mun_comp_f, imp_paises_princ, imp_paises_comp, imp_final, df_display_imp
+
                 # Salva o documento no state
                 file_bytes, file_name = app.finalizar_documento()
-                st.session_state.arquivos_gerados_produto.append({"name": file_name, "data": file_bytes})
+                st.session_state.arquivos_gerados_municipio.append({"name": file_name, "data": file_bytes})
             
-            # Limpa os DFs principais da memória após o loop
-            del df_exp_princ, df_exp_comp, df_imp_princ, df_imp_comp
+            # Limpa os DFs principais da memória
+            del df_exp_mun_princ, df_exp_mun_comp, df_imp_mun_princ, df_imp_mun_comp
 
         except Exception as e:
-            st.error(f"Ocorreu um erro inesperado durante a análise de produto:")
+            st.error(f"Ocorreu um erro inesperado durante a análise municipal:")
             st.exception(e)
 
-# --- Bloco de exibição de Download (COM LÓGICA DE ZIP) ---
-if st.session_state.arquivos_gerados_produto:
+# --- Bloco de Download (com ZIP) ---
+if st.session_state.arquivos_gerados_municipio:
     st.header("4. Relatórios Gerados")
-    st.info("Clique para baixar os relatórios. Eles permanecerão aqui até que você gere um novo relatório.")
     
-    if len(st.session_state.arquivos_gerados_produto) > 1:
-        # Caso "Separados": Criar um ZIP
-        st.subheader("Pacote de Relatórios (ZIP)")
-        
+    if len(st.session_state.arquivos_gerados_municipio) > 1:
+        # ZIP
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-            for arquivo in st.session_state.arquivos_gerados_produto:
+            for arquivo in st.session_state.arquivos_gerados_municipio:
                 zip_file.writestr(arquivo["name"], arquivo["data"])
         
         zip_bytes = zip_buffer.getvalue()
         
         st.download_button(
-            label=f"Baixar todos os {len(st.session_state.arquivos_gerados_produto)} relatórios (.zip)",
+            label=f"Baixar todos os {len(st.session_state.arquivos_gerados_municipio)} relatórios (.zip)",
             data=zip_bytes,
-            file_name=f"Briefings_Produtos_{ano_principal}.zip",
+            file_name=f"Briefings_Municipios_{ano_principal}.zip",
             mime="application/zip",
-            key="download_zip_produto"
+            key="download_zip_municipio"
         )
         
-    elif len(st.session_state.arquivos_gerados_produto) == 1:
-        # Caso "Agrupado": Botão único
-        st.subheader("Relatório Gerado")
-        arquivo = st.session_state.arquivos_gerados_produto[0] 
+    elif len(st.session_state.arquivos_gerados_municipio) == 1:
+        # Botão único
+        arquivo = st.session_state.arquivos_gerados_municipio[0] 
         st.download_button(
             label=f"Baixar Relatório ({arquivo['name']})",
             data=arquivo["data"], 
@@ -614,20 +553,3 @@ if st.session_state.arquivos_gerados_produto:
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             key=f"download_{arquivo['name']}"
         )
-
-# --- Bloco de Rodapé (Corrigido com Logo à Esquerda) ---
-st.divider() 
-
-col1, col2 = st.columns([0.3, 0.7], vertical_alignment="center") 
-
-with col1:
-    # Coluna 1 (menor) agora contém a logo
-    logo_footer_path = "AEST Sede.png"
-    if os.path.exists(logo_footer_path):
-        st.image(logo_footer_path, width=150)
-    else:
-        st.caption("Logo AEST não encontrada.")
-
-with col2:
-    # Coluna 2 (maior) agora contém o texto
-    st.caption("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
