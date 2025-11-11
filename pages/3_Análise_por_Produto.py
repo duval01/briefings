@@ -11,7 +11,6 @@ import re
 # --- CONFIGURAÇÕES GLOBAIS ---
 requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
 
-# Dicionário de meses
 MESES_MAPA = {
     "Janeiro": 1, "Fevereiro": 2, "Março": 3, "Abril": 4, "Maio": 5, "Junho": 6,
     "Julho": 7, "Agosto": 8, "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12
@@ -81,6 +80,7 @@ def obter_lista_de_produtos_sh4():
     df_ncm = carregar_dataframe(url_ncm, "NCM_SH.csv", usecols=['CO_SH4', 'NO_SH4_POR'], mostrar_progresso=False)
     if df_ncm is not None:
         # Formata como "Código - Nome"
+        df_ncm = df_ncm.drop_duplicates(subset=['CO_SH4']).dropna() # Remove duplicados
         df_ncm['Display'] = df_ncm['CO_SH4'].astype(str) + " - " + df_ncm['NO_SH4_POR']
         lista_produtos = df_ncm['Display'].unique().tolist()
         lista_produtos.sort()
@@ -95,22 +95,34 @@ def get_sh4(co_ncm):
     if len(co_ncm_str) == 8:
         return co_ncm_str[:4]
     elif len(co_ncm_str) >= 7:
-        return co_ncm_str[:3] # Lógica original
+        return co_ncm_str[:3]
     else:
         return None
 
 def formatar_valor(valor):
+    prefixo = ""
+    if valor < 0:
+        prefixo = "-"
+        valor = abs(valor)
+
     if valor >= 1_000_000_000:
-        return f"US$ {valor/1_000_000_000:.2f} Bilhões"
+        valor_formatado_str = f"{(valor / 1_000_000_000):.2f}".replace('.',',')
+        unidade = "bilhão" if (valor / 1_000_000_000) < 2 else "bilhões"
+        return f"{prefixo}US$ {valor_formatado_str} {unidade}"
     if valor >= 1_000_000:
-        return f"US$ {valor/1_000_000:.2f} Milhões"
+        valor_formatado_str = f"{(valor / 1_000_000):.2f}".replace('.',',')
+        unidade = "milhão" if (valor / 1_000_000) < 2 else "milhões"
+        return f"{prefixo}US$ {valor_formatado_str} {unidade}"
     if valor >= 1_000:
-        return f"US$ {valor/1_000:.2f} Mil"
-    return f"US$ {valor:.2f}"
+        valor_formatado_str = f"{(valor / 1_000):.2f}".replace('.',',')
+        return f"{prefixo}US$ {valor_formatado_str} mil"
+    
+    valor_formatado_str = f"{valor:.2f}".replace('.',',')
+    return f"{prefixo}US$ {valor_formatado_str}"
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 
-st.set_page_config(page_title="Análise por Produto", layout="wide")
+# st.set_page_config(page_title="Análise por Produto", layout="wide") # Config é feito no app.py
 st.sidebar.empty()
 logo_sidebar_path = "LogoMinasGerais.png"
 if os.path.exists(logo_sidebar_path):
@@ -131,7 +143,7 @@ with col1:
     produtos_selecionados = st.multiselect(
         "Selecione o(s) produto(s) (SH4):",
         options=lista_de_produtos,
-        default=[p for p in lista_de_produtos if "Café" in p][:1], # Pega o primeiro "Café"
+        default=[p for p in lista_de_produtos if "0901" in p][:1], # Pega "0901 - Café"
         help="Você pode digitar para pesquisar. O filtro usa os 4 dígitos do SH4."
     )
 
@@ -171,8 +183,8 @@ if st.button("Iniciar Análise por Produto"):
             df_imp_princ = carregar_dataframe(url_imp_ano_principal, f"IMP_{ano_principal}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
             df_imp_comp = carregar_dataframe(url_imp_ano_comparacao, f"IMP_{ano_comparacao}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
 
-            if df_exp_princ is None or df_imp_princ is None:
-                st.error("Falha ao carregar arquivos de dados. Tente novamente.")
+            if df_exp_princ is None or df_imp_princ is None or df_exp_comp is None or df_imp_comp is None:
+                st.error("Falha ao carregar arquivos de dados NCM. Tente novamente.")
                 st.stop()
             
             # --- Filtro de Meses ---
@@ -190,48 +202,62 @@ if st.button("Iniciar Análise por Produto"):
             df_imp_comp['SH4'] = df_imp_comp['CO_NCM'].apply(get_sh4)
             
             # --- Processamento Exportação ---
-            st.header("Principais Destinos (Exportação)")
+            st.header("Principais Destinos (Exportação de MG)")
             
             df_exp_princ_f = df_exp_princ[(df_exp_princ['SG_UF_NCM'] == 'MG') & (df_exp_princ['SH4'].isin(codigos_sh4_selecionados)) & (df_exp_princ['CO_MES'].isin(meses_para_filtrar))]
             df_exp_comp_f = df_exp_comp[(df_exp_comp['SG_UF_NCM'] == 'MG') & (df_exp_comp['SH4'].isin(codigos_sh4_selecionados)) & (df_exp_comp['CO_MES'].isin(meses_para_filtrar))]
             
             exp_paises_princ = df_exp_princ_f.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
-            exp_paises_comp = df_exp_comp_f.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
+            exp_paises_comp = df_exp_comp_f.groupby('CO_PAIS')['VL_FOB'].sum().reset_index()
 
             exp_paises_princ['País'] = exp_paises_princ['CO_PAIS'].map(mapa_nomes_paises).fillna("Desconhecido")
-            exp_paises_princ[f'Valor {ano_principal}'] = exp_paises_princ['VL_FOB'].apply(formatar_valor)
+            exp_paises_princ[f'Valor {ano_principal} (US$)'] = exp_paises_princ['VL_FOB']
             
             exp_paises_comp['País'] = exp_paises_comp['CO_PAIS'].map(mapa_nomes_paises).fillna("Desconhecido")
-            exp_paises_comp[f'Valor {ano_comparacao}'] = exp_paises_comp['VL_FOB'].apply(formatar_valor)
+            exp_paises_comp[f'Valor {ano_comparacao} (US$)'] = exp_paises_comp['VL_FOB']
             
-            exp_final = pd.merge(exp_paises_princ[['País', f'Valor {ano_principal}']], 
-                                 exp_paises_comp[['País', f'Valor {ano_comparacao}']], 
-                                 on="País", how="outer").fillna("US$ 0.00")
+            exp_final = pd.merge(exp_paises_princ[['País', f'Valor {ano_principal} (US$)']], 
+                                 exp_paises_comp[['País', f'Valor {ano_comparacao} (US$)']], 
+                                 on="País", how="outer").fillna(0)
             
-            st.dataframe(exp_final.head(10))
+            exp_final['Variação %'] = 100 * (exp_final[f'Valor {ano_principal} (US$)'] - exp_final[f'Valor {ano_comparacao} (US$)']) / exp_final[f'Valor {ano_comparacao} (US$)']
+            exp_final['Variação %'] = exp_final['Variação %'].fillna(0).round(2)
+
+            exp_final[f'Valor {ano_principal}'] = exp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
+            exp_final[f'Valor {ano_comparacao}'] = exp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
+            
+            st.dataframe(exp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(20)
+                         [['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']])
             
             del df_exp_princ, df_exp_comp, df_exp_princ_f, df_exp_comp_f, exp_paises_princ, exp_paises_comp, exp_final
 
             # --- Processamento Importação ---
-            st.header("Principais Origens (Importação)")
+            st.header("Principais Origens (Importação de MG)")
             
             df_imp_princ_f = df_imp_princ[(df_imp_princ['SG_UF_NCM'] == 'MG') & (df_imp_princ['SH4'].isin(codigos_sh4_selecionados)) & (df_imp_princ['CO_MES'].isin(meses_para_filtrar))]
             df_imp_comp_f = df_imp_comp[(df_imp_comp['SG_UF_NCM'] == 'MG') & (df_imp_comp['SH4'].isin(codigos_sh4_selecionados)) & (df_imp_comp['CO_MES'].isin(meses_para_filtrar))]
 
             imp_paises_princ = df_imp_princ_f.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
-            imp_paises_comp = df_imp_comp_f.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
+            imp_paises_comp = df_imp_comp_f.groupby('CO_PAIS')['VL_FOB'].sum().reset_index()
 
             imp_paises_princ['País'] = imp_paises_princ['CO_PAIS'].map(mapa_nomes_paises).fillna("Desconhecido")
-            imp_paises_princ[f'Valor {ano_principal}'] = imp_paises_princ['VL_FOB'].apply(formatar_valor)
+            imp_paises_princ[f'Valor {ano_principal} (US$)'] = imp_paises_princ['VL_FOB']
             
             imp_paises_comp['País'] = imp_paises_comp['CO_PAIS'].map(mapa_nomes_paises).fillna("Desconhecido")
-            imp_paises_comp[f'Valor {ano_comparacao}'] = imp_paises_comp['VL_FOB'].apply(formatar_valor)
+            imp_paises_comp[f'Valor {ano_comparacao} (US$)'] = imp_paises_comp['VL_FOB']
             
-            imp_final = pd.merge(imp_paises_princ[['País', f'Valor {ano_principal}']], 
-                                 imp_paises_comp[['País', f'Valor {ano_comparacao}']], 
-                                 on="País", how="outer").fillna("US$ 0.00")
+            imp_final = pd.merge(imp_paises_princ[['País', f'Valor {ano_principal} (US$)']], 
+                                 imp_paises_comp[['País', f'Valor {ano_comparacao} (US$)']], 
+                                 on="País", how="outer").fillna(0)
+
+            imp_final['Variação %'] = 100 * (imp_final[f'Valor {ano_principal} (US$)'] - imp_final[f'Valor {ano_comparacao} (US$)']) / imp_final[f'Valor {ano_comparacao} (US$)']
+            imp_final['Variação %'] = imp_final['Variação %'].fillna(0).round(2)
             
-            st.dataframe(imp_final.head(10))
+            imp_final[f'Valor {ano_principal}'] = imp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
+            imp_final[f'Valor {ano_comparacao}'] = imp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
+
+            st.dataframe(imp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(20)
+                         [['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']])
             
             del df_imp_princ, df_imp_comp, df_imp_princ_f, df_imp_comp_f, imp_paises_princ, imp_paises_comp, imp_final
 
