@@ -21,7 +21,7 @@ st.header("Bem-vindo à central de automações da AEST")
 st.markdown("""
 Esta é uma ferramenta automatizada para unificar as automações criadas pela AEST.
 
-### 🧭 Como Navegar
+### 🧭 Como navegar
 
 Use o menu lateral (à esquerda) para selecionar o tipo de análise que deseja realizar:
 
@@ -42,6 +42,7 @@ with col1:
         st.caption("Logo AEST não encontrada.")
 with col2:
     st.caption("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
+
 
 
 
