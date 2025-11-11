@@ -11,6 +11,8 @@ import zipfile
 from docx import Document
 from docx.shared import Cm, Pt, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 
 # --- CONFIGURAÇÕES GLOBAIS ---
 requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
@@ -73,6 +75,7 @@ def obter_dados_paises():
     url_pais = "https://balanca.economia.gov.br/balanca/bd/tabelas/PAIS.csv"
     df_pais = carregar_dataframe(url_pais, "PAIS.csv", usecols=['NO_PAIS', 'CO_PAIS'], mostrar_progresso=False) 
     if df_pais is not None and not df_pais.empty:
+        # Cria um mapa de Código -> Nome
         return pd.Series(df_pais.NO_PAIS.values, index=df_pais.CO_PAIS).to_dict()
     return {}
 
@@ -94,6 +97,7 @@ def obter_mapa_codigos_municipios():
     df_mun = carregar_dataframe(url_uf_mun, "UF_MUN.csv", usecols=['SG_UF', 'NO_MUN', 'CO_MUN_GEO'], mostrar_progresso=False)
     if df_mun is not None:
         df_mun_mg = df_mun[df_mun['SG_UF'] == 'MG']
+        # Mapeia Nome para CO_MUN_GEO
         return pd.Series(df_mun_mg.CO_MUN_GEO.values, index=df_mun_mg.NO_MUN).to_dict()
     return {}
 
@@ -294,7 +298,8 @@ with col1:
     municipios_selecionados = st.multiselect(
         "Selecione o(s) município(s):",
         options=lista_de_municipios,
-        default=["Belo Horizonte"],
+        # --- ALTERAÇÃO AQUI: Corrigido o default para maiúsculas ---
+        default=["BELO HORIZONTE"],
         help="Você pode digitar para pesquisar."
     )
 
@@ -383,10 +388,12 @@ if st.button("Iniciar Análise por Município"):
                     st.subheader(f"Análise Agrupada de: {municipio_nome}")
                     codigos_municipios_loop = codigos_municipios_map
                     titulo_doc = f"Briefing de Municípios (Agrupado) - {ano_principal}"
+                    nome_doc = "dos municípios selecionados"
                 else:
                     st.subheader(f"Análise de: {municipio_nome}")
                     codigos_municipios_loop = [mapa_codigos_municipios.get(municipio_nome)]
                     titulo_doc = f"Briefing - {municipio_nome} - {ano_principal}"
+                    nome_doc = f"de {municipio_nome}"
                 
                 app.set_titulo(titulo_doc)
 
@@ -421,13 +428,14 @@ if st.button("Iniciar Análise por Município"):
                 st.dataframe(exp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(10)
                              [['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']])
                 
-                texto_exp_total = f"Em {nome_periodo}, as exportações de {municipio_nome} somaram {formatar_valor(exp_total_princ)}, {tipo_dif_exp} de {dif_exp:.1f}% em relação a {nome_periodo_comp}."
-                texto_exp_paises = "Os principais países de destino foram: " + ", ".join(exp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(5)['País'].tolist()) + "."
-
+                texto_exp_total = f"Em {nome_periodo}, as exportações {nome_doc} somaram {formatar_valor(exp_total_princ)}, {tipo_dif_exp} de {dif_exp:.1f}% em relação a {nome_periodo_comp}."
+                
                 app.nova_secao()
                 app.adicionar_titulo("Exportações do Município")
                 app.adicionar_conteudo_formatado(texto_exp_total)
+                
                 if exp_total_princ > 0:
+                    texto_exp_paises = "Os principais países de destino foram: " + ", ".join(exp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(5)['País'].tolist()) + "."
                     app.adicionar_conteudo_formatado(texto_exp_paises)
                 
                 del df_exp_mun_princ_f, df_exp_mun_comp_f, exp_paises_princ, exp_paises_comp, exp_final
@@ -463,56 +471,18 @@ if st.button("Iniciar Análise por Município"):
                 st.dataframe(imp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(10)
                              [['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']])
                 
-                texto_imp_total = f"Em {nome_periodo}, as importações de {municipio_nome} somaram {formatar_valor(imp_total_princ)}, {tipo_dif_imp} de {dif_imp:.1f}% em relação a {nome_periodo_comp}."
-                texto_imp_paises = "Os principais países de origem foram: " + ", ".join(imp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(5)['País'].tolist()) + "."
-
+                texto_imp_total = f"Em {nome_periodo}, as importações {nome_doc} somaram {formatar_valor(imp_total_princ)}, {tipo_dif_imp} de {dif_imp:.1f}% em relação a {nome_periodo_comp}."
+                
                 app.nova_secao()
                 app.adicionar_titulo("Importações do Município")
                 app.adicionar_conteudo_formatado(texto_imp_total)
+
                 if imp_total_princ > 0:
+                    texto_imp_paises = "Os principais países de origem foram: " + ", ".join(imp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(5)['País'].tolist()) + "."
                     app.adicionar_conteudo_formatado(texto_imp_paises)
                 
                 del df_imp_mun_princ_f, df_imp_mun_comp_f, imp_paises_princ, imp_paises_comp, imp_final
 
                 # Salva o documento no state
                 file_bytes, file_name = app.finalizar_documento()
-                st.session_state.arquivos_gerados_municipio.append({"name": file_name, "data": file_bytes})
-            
-            # Limpa os DFs principais da memória
-            del df_exp_mun_princ, df_exp_mun_comp, df_imp_mun_princ, df_imp_mun_comp
-
-        except Exception as e:
-            st.error(f"Ocorreu um erro inesperado durante a análise municipal:")
-            st.exception(e)
-
-# --- Bloco de Download (com ZIP) ---
-if st.session_state.arquivos_gerados_municipio:
-    st.header("4. Relatórios Gerados")
-    
-    if len(st.session_state.arquivos_gerados_municipio) > 1:
-        # ZIP
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-            for arquivo in st.session_state.arquivos_gerados_municipio:
-                zip_file.writestr(arquivo["name"], arquivo["data"])
-        
-        zip_bytes = zip_buffer.getvalue()
-        
-        st.download_button(
-            label=f"Baixar todos os {len(st.session_state.arquivos_gerados_municipio)} relatórios (.zip)",
-            data=zip_bytes,
-            file_name=f"Briefings_Municipios_{ano_principal}.zip",
-            mime="application/zip",
-            key="download_zip_municipio"
-        )
-        
-    elif len(st.session_state.arquivos_gerados_municipio) == 1:
-        # Botão único
-        arquivo = st.session_state.arquivos_gerados_municipio[0] 
-        st.download_button(
-            label=f"Baixar Relatório ({arquivo['name']})",
-            data=arquivo["data"], 
-            file_name=arquivo["name"],
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            key=f"download_{arquivo['name']}"
-        )
+                st.session_state.arquivos_gerados_municipio.append({"name": file_name, "
