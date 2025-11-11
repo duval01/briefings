@@ -7,6 +7,10 @@ import os
 from datetime import datetime
 import io
 import re
+import zipfile
+from docx import Document
+from docx.shared import Cm, Pt, Inches
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 
 # --- CONFIGURAÇÕES GLOBAIS ---
 requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
@@ -69,7 +73,6 @@ def obter_dados_paises():
     url_pais = "https://balanca.economia.gov.br/balanca/bd/tabelas/PAIS.csv"
     df_pais = carregar_dataframe(url_pais, "PAIS.csv", usecols=['NO_PAIS', 'CO_PAIS'], mostrar_progresso=False) 
     if df_pais is not None and not df_pais.empty:
-        # Cria um mapa de Código -> Nome
         return pd.Series(df_pais.NO_PAIS.values, index=df_pais.CO_PAIS).to_dict()
     return {}
 
@@ -91,7 +94,6 @@ def obter_mapa_codigos_municipios():
     df_mun = carregar_dataframe(url_uf_mun, "UF_MUN.csv", usecols=['SG_UF', 'NO_MUN', 'CO_MUN_GEO'], mostrar_progresso=False)
     if df_mun is not None:
         df_mun_mg = df_mun[df_mun['SG_UF'] == 'MG']
-        # Mapeia Nome para CO_MUN_GEO
         return pd.Series(df_mun_mg.CO_MUN_GEO.values, index=df_mun_mg.NO_MUN).to_dict()
     return {}
 
@@ -116,9 +118,160 @@ def formatar_valor(valor):
     valor_formatado_str = f"{valor:.2f}".replace('.',',')
     return f"{prefixo}US$ {valor_formatado_str}"
 
-# --- CONFIGURAÇÃO DA PÁGINA ---
+def sanitize_filename(filename):
+    return re.sub(r'[\\/*?:"<>|]', "_", filename)
 
-# st.set_page_config(page_title="Análise por Município", layout="wide") # Config é feito no app.py
+# --- FUNÇÃO ADICIONADA ---
+def calcular_diferenca_percentual(valor_atual, valor_anterior):
+    """Calcula a diferença percentual entre dois valores."""
+    if valor_anterior == 0:
+        return 0.0, "acréscimo" if valor_atual > 0 else "redução" if valor_atual < 0 else "estabilidade"
+    
+    diferenca = round(((valor_atual - valor_anterior) / valor_anterior) * 100, 2)
+    
+    if diferenca > 0:
+        tipo_diferenca = "um acréscimo"
+    elif diferenca < 0:
+        tipo_diferenca = "uma redução"
+    else:
+        tipo_diferenca = "uma estabilidade"
+    diferenca = abs(diferenca)
+    return diferenca, tipo_diferenca
+
+# --- CLASSE DOCUMENTO ADICIONADA ---
+class DocumentoApp:
+    def __init__(self, logo_path):
+        self.doc = Document()
+        self.secao_atual = 0
+        self.subsecao_atual = 0
+        self.titulo_doc = ""
+        self.logo_path = logo_path
+        self.diretorio_base = "/tmp/" 
+
+    def set_titulo(self, titulo):
+        self.titulo_doc = sanitize_filename(titulo)
+        self.criar_cabecalho()
+        p = self.doc.add_paragraph()
+        run = p.add_run(self.titulo_doc)
+        run.font.name = 'Times New Roman'
+        run.font.size = Pt(12)
+        run.bold = True
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    def adicionar_conteudo_formatado(self, texto):
+        p = self.doc.add_paragraph()
+        p.paragraph_format.first_line_indent = Cm(1.25)
+        run = p.add_run(texto)
+        run.font.name = 'Times New Roman'
+        run.font.size = Pt(12)
+        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+
+    def adicionar_titulo(self, texto):
+        p = self.doc.add_paragraph()
+        if self.subsecao_atual == 0:
+            run = p.add_run(f"{self.secao_atual}. {texto}")
+        else:
+            run = p.add_run(f"{self.secao_atual}.{self.subsecao_atual}. {texto}")
+        run.font.name = 'Times New Roman'
+        run.font.size = Pt(12)
+        run.bold = True
+        p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+
+    def nova_secao(self):
+        self.secao_atual += 1
+        self.subsecao_atual = 0
+
+    def criar_cabecalho(self):
+        section = self.doc.sections[0]
+        section.top_margin = Cm(1.27)
+        header = section.header
+        
+        largura_total_cm = 16.0
+        table = header.add_table(rows=1, cols=2, width=Cm(largura_total_cm))
+        table.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        table.columns[0].width = Cm(4.0)
+        table.columns[1].width = Cm(12.0)
+
+        cell_imagem = table.cell(0, 0)
+        paragraph_imagem = cell_imagem.paragraphs[0]
+        paragraph_imagem.paragraph_format.space_before = Pt(0)
+        paragraph_imagem.paragraph_format.space_after = Pt(0)
+        
+        run_imagem = paragraph_imagem.add_run()
+        if self.logo_path and os.path.exists(self.logo_path):
+            try:
+                run_imagem.add_picture(self.logo_path,
+                                       width=Cm(3.5), 
+                                       height=Cm(3.42))
+            except Exception as e:
+                paragraph_imagem.add_run("[Logo não encontrado]")
+        else:
+            paragraph_imagem.add_run("[Logo não encontrado]")
+
+        paragraph_imagem.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        cell_texto = table.cell(0, 1)
+        textos = [
+            "GOVERNO DO ESTADO DE MINAS GERAIS",
+            "SECRETARIA DE ESTADO DE DESENVOLVIMENTO ECONÔMICO",
+            "Subsecretaria de Promoção de Investimentos e Cadeias Produtivas",
+            "Superintendência de Atração de Investimentos e Estímulo à Exportação"
+        ]
+        
+        def formatar_paragrafo_cabecalho(p):
+            p.paragraph_format.space_before = Pt(0)
+            p.paragraph_format.space_after = Pt(0)
+            p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+            p.paragraph_format.line_spacing = Pt(11)
+            p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+
+        p = cell_texto.paragraphs[0]
+        formatar_paragrafo_cabecalho(p)
+        run = p.add_run(textos[0])
+        run.font.name = 'Times New Roman'
+        run.font.size = Pt(11)
+        run.bold = True 
+
+        p = cell_texto.add_paragraph()
+        formatar_paragrafo_cabecalho(p)
+        run = p.add_run(textos[1])
+        run.font.name = 'Times New Roman'
+        run.font.size = Pt(11)
+        run.bold = True
+        
+        for texto in textos[2:]: 
+            p = cell_texto.add_paragraph()
+            formatar_paragrafo_cabecalho(p)
+            run = p.add_run(texto)
+            run.font.name = 'Times New Roman'
+            run.font.size = Pt(11)
+            run.bold = False 
+
+    def finalizar_documento(self):
+        """Salva o documento em memória e retorna."""
+        
+        diretorio_real = self.diretorio_base
+        try:
+            os.makedirs(diretorio_real, exist_ok=True)
+        except Exception:
+            diretorio_real = "/tmp/"
+            os.makedirs(diretorio_real, exist_ok=True)
+            
+        nome_arquivo = f"{self.titulo_doc}.docx"
+        nome_arquivo_sanitizado = sanitize_filename(nome_arquivo)
+        
+        file_stream = io.BytesIO()
+        self.doc.save(file_stream)
+        file_stream.seek(0)
+        
+        file_bytes = file_stream.getvalue()
+        st.success(f"Documento '{nome_arquivo_sanitizado}' gerado com sucesso!")
+        
+        return file_bytes, nome_arquivo_sanitizado
+# --- FIM DAS FUNÇÕES COPIADAS ---
+
+
+# --- CONFIGURAÇÃO DA PÁGINA ---
 st.sidebar.empty()
 logo_sidebar_path = "LogoMinasGerais.png"
 if os.path.exists(logo_sidebar_path):
@@ -156,15 +309,36 @@ with col2:
         help="Selecione os meses. Se deixar em branco, o ano inteiro será analisado."
     )
 
-st.header("2. Gerar Análise")
+# --- Lógica de Agrupamento ---
+agrupado = True
+if len(municipios_selecionados) > 1:
+    st.header("2. Opções de Agrupamento")
+    agrupamento_input = st.radio(
+        "Deseja que os dados sejam agrupados ou separados?",
+        ("agrupados", "separados"),
+        index=0,
+        horizontal=True
+    )
+    agrupado = (agrupamento_input == "agrupados")
+    st.header("3. Gerar Análise")
+else:
+    st.header("2. Gerar Análise")
+
+# --- Inicialização do Session State ---
+if 'arquivos_gerados_municipio' not in st.session_state:
+    st.session_state.arquivos_gerados_municipio = []
+
 
 if st.button("Iniciar Análise por Município"):
+    
+    st.session_state.arquivos_gerados_municipio = []
+    logo_path_to_use = "LogoMinasGerais.png"
     
     with st.spinner(f"Processando dados municipais para {', '.join(municipios_selecionados)}..."):
         try:
             # --- Validação ---
-            codigos_municipios = [mapa_codigos_municipios.get(m) for m in municipios_selecionados if m in mapa_codigos_municipios]
-            if not codigos_municipios:
+            codigos_municipios_map = [mapa_codigos_municipios.get(m) for m in municipios_selecionados if m in mapa_codigos_municipios]
+            if not codigos_municipios_map:
                 st.error("Nenhum município selecionado ou válido.")
                 st.stop()
             
@@ -187,71 +361,158 @@ if st.button("Iniciar Análise por Município"):
             # --- Filtro de Meses ---
             if meses_selecionados:
                 meses_para_filtrar = [MESES_MAPA[m] for m in meses_selecionados]
+                nome_periodo = f"o período de {', '.join(meses_selecionados)} de {ano_principal}"
+                nome_periodo_comp = f"o mesmo período de {ano_comparacao}"
             else:
                 meses_para_filtrar = list(range(1, df_exp_mun_princ['CO_MES'].max() + 1))
+                nome_periodo = f"o ano de {ano_principal} (completo)"
+                nome_periodo_comp = f"o mesmo período de {ano_comparacao}"
 
-            # --- Processamento Exportação ---
-            st.header(f"Exportações de {', '.join(municipios_selecionados)}")
-            df_exp_mun_princ_f = df_exp_mun_princ[(df_exp_mun_princ['CO_MUN'].isin(codigos_municipios)) & (df_exp_mun_princ['CO_MES'].isin(meses_para_filtrar))]
-            df_exp_mun_comp_f = df_exp_mun_comp[(df_exp_mun_comp['CO_MUN'].isin(codigos_municipios)) & (df_exp_mun_comp['CO_MES'].isin(meses_para_filtrar))]
             
-            exp_paises_princ = df_exp_mun_princ_f.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
-            exp_paises_comp = df_exp_mun_comp_f.groupby('CO_PAIS')['VL_FOB'].sum().reset_index()
-            
-            # Mapeia nomes e formata valores
-            exp_paises_princ['País'] = exp_paises_princ['CO_PAIS'].map(mapa_nomes_paises).fillna("Desconhecido")
-            exp_paises_princ[f'Valor {ano_principal} (US$)'] = exp_paises_princ['VL_FOB']
-            
-            exp_paises_comp['País'] = exp_paises_comp['CO_PAIS'].map(mapa_nomes_paises).fillna("Desconhecido")
-            exp_paises_comp[f'Valor {ano_comparacao} (US$)'] = exp_paises_comp['VL_FOB']
+            # --- Lógica de Loop (Agrupado vs Separado) ---
+            if not agrupado:
+                municipios_para_processar = municipios_selecionados
+            else:
+                municipios_para_processar = [", ".join(municipios_selecionados)]
 
-            # Junta os dois anos
-            exp_final = pd.merge(exp_paises_princ[['País', f'Valor {ano_principal} (US$)']], 
-                                 exp_paises_comp[['País', f'Valor {ano_comparacao} (US$)']], 
-                                 on="País", how="outer").fillna(0)
+            for municipio_nome in municipios_para_processar:
+                
+                app = DocumentoApp(logo_path=logo_path_to_use)
+                
+                if agrupado:
+                    st.subheader(f"Análise Agrupada de: {municipio_nome}")
+                    codigos_municipios_loop = codigos_municipios_map
+                    titulo_doc = f"Briefing de Municípios (Agrupado) - {ano_principal}"
+                else:
+                    st.subheader(f"Análise de: {municipio_nome}")
+                    codigos_municipios_loop = [mapa_codigos_municipios.get(municipio_nome)]
+                    titulo_doc = f"Briefing - {municipio_nome} - {ano_principal}"
+                
+                app.set_titulo(titulo_doc)
+
+                # --- Processamento Exportação ---
+                st.header("Principais Destinos (Exportação)")
+                df_exp_mun_princ_f = df_exp_mun_princ[(df_exp_mun_princ['CO_MUN'].isin(codigos_municipios_loop)) & (df_exp_mun_princ['CO_MES'].isin(meses_para_filtrar))]
+                df_exp_mun_comp_f = df_exp_mun_comp[(df_exp_mun_comp['CO_MUN'].isin(codigos_municipios_loop)) & (df_exp_mun_comp['CO_MES'].isin(meses_para_filtrar))]
+                
+                exp_total_princ = df_exp_mun_princ_f['VL_FOB'].sum()
+                exp_total_comp = df_exp_mun_comp_f['VL_FOB'].sum()
+                dif_exp, tipo_dif_exp = calcular_diferenca_percentual(exp_total_princ, exp_total_comp)
+                
+                exp_paises_princ = df_exp_mun_princ_f.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
+                exp_paises_comp = df_exp_mun_comp_f.groupby('CO_PAIS')['VL_FOB'].sum().reset_index()
+                
+                exp_paises_princ['País'] = exp_paises_princ['CO_PAIS'].map(mapa_nomes_paises).fillna("Desconhecido")
+                exp_paises_princ[f'Valor {ano_principal} (US$)'] = exp_paises_princ['VL_FOB']
+                
+                exp_paises_comp['País'] = exp_paises_comp['CO_PAIS'].map(mapa_nomes_paises).fillna("Desconhecido")
+                exp_paises_comp[f'Valor {ano_comparacao} (US$)'] = exp_paises_comp['VL_FOB']
+                
+                exp_final = pd.merge(exp_paises_princ[['País', f'Valor {ano_principal} (US$)']], 
+                                     exp_paises_comp[['País', f'Valor {ano_comparacao} (US$)']], 
+                                     on="País", how="outer").fillna(0)
+                
+                exp_final['Variação %'] = 100 * (exp_final[f'Valor {ano_principal} (US$)'] - exp_final[f'Valor {ano_comparacao} (US$)']) / exp_final[f'Valor {ano_comparacao} (US$)']
+                exp_final['Variação %'] = exp_final['Variação %'].replace([float('inf'), float('-inf')], 0).fillna(0).round(2)
+
+                exp_final[f'Valor {ano_principal}'] = exp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
+                exp_final[f'Valor {ano_comparacao}'] = exp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
+                
+                st.dataframe(exp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(10)
+                             [['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']])
+                
+                texto_exp_total = f"Em {nome_periodo}, as exportações de {municipio_nome} somaram {formatar_valor(exp_total_princ)}, {tipo_dif_exp} de {dif_exp:.1f}% em relação a {nome_periodo_comp}."
+                texto_exp_paises = "Os principais países de destino foram: " + ", ".join(exp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(5)['País'].tolist()) + "."
+
+                app.nova_secao()
+                app.adicionar_titulo("Exportações do Município")
+                app.adicionar_conteudo_formatado(texto_exp_total)
+                if exp_total_princ > 0:
+                    app.adicionar_conteudo_formatado(texto_exp_paises)
+                
+                del df_exp_mun_princ_f, df_exp_mun_comp_f, exp_paises_princ, exp_paises_comp, exp_final
+
+                # --- Processamento Importação ---
+                st.header(f"Importações de {municipio_nome}")
+                df_imp_mun_princ_f = df_imp_mun_princ[(df_imp_mun_princ['CO_MUN'].isin(codigos_municipios_loop)) & (df_imp_mun_princ['CO_MES'].isin(meses_para_filtrar))]
+                df_imp_mun_comp_f = df_imp_mun_comp[(df_imp_mun_comp['CO_MUN'].isin(codigos_municipios_loop)) & (df_imp_mun_comp['CO_MES'].isin(meses_para_filtrar))]
+
+                imp_total_princ = df_imp_mun_princ_f['VL_FOB'].sum()
+                imp_total_comp = df_imp_mun_comp_f['VL_FOB'].sum()
+                dif_imp, tipo_dif_imp = calcular_diferenca_percentual(imp_total_princ, imp_total_comp)
+
+                imp_paises_princ = df_imp_mun_princ_f.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
+                imp_paises_comp = df_imp_mun_comp_f.groupby('CO_PAIS')['VL_FOB'].sum().reset_index()
+
+                imp_paises_princ['País'] = imp_paises_princ['CO_PAIS'].map(mapa_nomes_paises).fillna("Desconhecido")
+                imp_paises_princ[f'Valor {ano_principal} (US$)'] = imp_paises_princ['VL_FOB']
+                
+                imp_paises_comp['País'] = imp_paises_comp['CO_PAIS'].map(mapa_nomes_paises).fillna("Desconhecido")
+                imp_paises_comp[f'Valor {ano_comparacao} (US$)'] = imp_paises_comp['VL_FOB']
+                
+                imp_final = pd.merge(imp_paises_princ[['País', f'Valor {ano_principal} (US$)']], 
+                                     imp_paises_comp[['País', f'Valor {ano_comparacao} (US$)']], 
+                                     on="País", how="outer").fillna(0)
+
+                imp_final['Variação %'] = 100 * (imp_final[f'Valor {ano_principal} (US$)'] - imp_final[f'Valor {ano_comparacao} (US$)']) / imp_final[f'Valor {ano_comparacao} (US$)']
+                imp_final['Variação %'] = imp_final['Variação %'].replace([float('inf'), float('-inf')], 0).fillna(0).round(2)
+                
+                imp_final[f'Valor {ano_principal}'] = imp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
+                imp_final[f'Valor {ano_comparacao}'] = imp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
+
+                st.dataframe(imp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(10)
+                             [['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']])
+                
+                texto_imp_total = f"Em {nome_periodo}, as importações de {municipio_nome} somaram {formatar_valor(imp_total_princ)}, {tipo_dif_imp} de {dif_imp:.1f}% em relação a {nome_periodo_comp}."
+                texto_imp_paises = "Os principais países de origem foram: " + ", ".join(imp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(5)['País'].tolist()) + "."
+
+                app.nova_secao()
+                app.adicionar_titulo("Importações do Município")
+                app.adicionar_conteudo_formatado(texto_imp_total)
+                if imp_total_princ > 0:
+                    app.adicionar_conteudo_formatado(texto_imp_paises)
+                
+                del df_imp_mun_princ_f, df_imp_mun_comp_f, imp_paises_princ, imp_paises_comp, imp_final
+
+                # Salva o documento no state
+                file_bytes, file_name = app.finalizar_documento()
+                st.session_state.arquivos_gerados_municipio.append({"name": file_name, "data": file_bytes})
             
-            # Calcula Variação
-            exp_final['Variação %'] = 100 * (exp_final[f'Valor {ano_principal} (US$)'] - exp_final[f'Valor {ano_comparacao} (US$)']) / exp_final[f'Valor {ano_comparacao} (US$)']
-            exp_final['Variação %'] = exp_final['Variação %'].fillna(0).round(2) # Substitui inf por 0
-
-            # Formata valores em US$
-            exp_final[f'Valor {ano_principal}'] = exp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
-            exp_final[f'Valor {ano_comparacao}'] = exp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
-            
-            st.dataframe(exp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(20)
-                         [['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']])
-            
-            del df_exp_mun_princ, df_exp_mun_comp, df_exp_mun_princ_f, df_exp_mun_comp_f, exp_paises_princ, exp_paises_comp, exp_final
-
-            # --- Processamento Importação ---
-            st.header(f"Importações de {', '.join(municipios_selecionados)}")
-            df_imp_mun_princ_f = df_imp_mun_princ[(df_imp_mun_princ['CO_MUN'].isin(codigos_municipios)) & (df_imp_mun_princ['CO_MES'].isin(meses_para_filtrar))]
-            df_imp_mun_comp_f = df_imp_mun_comp[(df_imp_mun_comp['CO_MUN'].isin(codigos_municipios)) & (df_imp_mun_comp['CO_MES'].isin(meses_para_filtrar))]
-
-            imp_paises_princ = df_imp_mun_princ_f.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
-            imp_paises_comp = df_imp_mun_comp_f.groupby('CO_PAIS')['VL_FOB'].sum().reset_index()
-
-            imp_paises_princ['País'] = imp_paises_princ['CO_PAIS'].map(mapa_nomes_paises).fillna("Desconhecido")
-            imp_paises_princ[f'Valor {ano_principal} (US$)'] = imp_paises_princ['VL_FOB']
-            
-            imp_paises_comp['País'] = imp_paises_comp['CO_PAIS'].map(mapa_nomes_paises).fillna("Desconhecido")
-            imp_paises_comp[f'Valor {ano_comparacao} (US$)'] = imp_paises_comp['VL_FOB']
-            
-            imp_final = pd.merge(imp_paises_princ[['País', f'Valor {ano_principal} (US$)']], 
-                                 imp_paises_comp[['País', f'Valor {ano_comparacao} (US$)']], 
-                                 on="País", how="outer").fillna(0)
-
-            imp_final['Variação %'] = 100 * (imp_final[f'Valor {ano_principal} (US$)'] - imp_final[f'Valor {ano_comparacao} (US$)']) / imp_final[f'Valor {ano_comparacao} (US$)']
-            imp_final['Variação %'] = imp_final['Variação %'].fillna(0).round(2)
-            
-            imp_final[f'Valor {ano_principal}'] = imp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
-            imp_final[f'Valor {ano_comparacao}'] = imp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
-
-            st.dataframe(imp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(20)
-                         [['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']])
-
-            del df_imp_mun_princ, df_imp_mun_comp, df_imp_mun_princ_f, df_imp_mun_comp_f, imp_paises_princ, imp_paises_comp, imp_final
+            # Limpa os DFs principais da memória
+            del df_exp_mun_princ, df_exp_mun_comp, df_imp_mun_princ, df_imp_mun_comp
 
         except Exception as e:
             st.error(f"Ocorreu um erro inesperado durante a análise municipal:")
             st.exception(e)
+
+# --- Bloco de Download (com ZIP) ---
+if st.session_state.arquivos_gerados_municipio:
+    st.header("4. Relatórios Gerados")
+    
+    if len(st.session_state.arquivos_gerados_municipio) > 1:
+        # ZIP
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            for arquivo in st.session_state.arquivos_gerados_municipio:
+                zip_file.writestr(arquivo["name"], arquivo["data"])
+        
+        zip_bytes = zip_buffer.getvalue()
+        
+        st.download_button(
+            label=f"Baixar todos os {len(st.session_state.arquivos_gerados_municipio)} relatórios (.zip)",
+            data=zip_bytes,
+            file_name=f"Briefings_Municipios_{ano_principal}.zip",
+            mime="application/zip",
+            key="download_zip_municipio"
+        )
+        
+    elif len(st.session_state.arquivos_gerados_municipio) == 1:
+        # Botão único
+        arquivo = st.session_state.arquivos_gerados_municipio[0] 
+        st.download_button(
+            label=f"Baixar Relatório ({arquivo['name']})",
+            data=arquivo["data"], 
+            file_name=arquivo["name"],
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            key=f"download_{arquivo['name']}"
+        )
