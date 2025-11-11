@@ -4,16 +4,15 @@ import requests
 from io import StringIO
 from urllib3.exceptions import InsecureRequestWarning
 import os
-from datetime import datetime, timezone
-import calendar
+from datetime import datetime
+import io
+import re
+import zipfile
 from docx import Document
 from docx.shared import Cm, Pt, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-import re
-import io
-import zipfile
 
 # --- CONFIGURAÇÕES GLOBAIS ---
 requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
@@ -23,21 +22,6 @@ MESES_MAPA = {
     "Julho": 7, "Agosto": 8, "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12
 }
 LISTA_MESES = list(MESES_MAPA.keys())
-
-ARTIGOS_PAISES_MAP = {
-    "Afeganistão": "o", "África do Sul": "a", "Alemanha": "a", "Arábia Saudita": "a",
-    "Argentina": "a", "Austrália": "a", "Bélgica": "a", "Brasil": "o", "Canadá": "o",
-    "Chade": "o", "Chile": "o", "China": "a", "Colômbia": "a", "Congo": "o",
-    "Coreia do Norte": "a", "Coreia do Sul": "a", "Costa Rica": "a", "Equador": "o",
-    "Egito": "o", "Emirados Árabes Unidos": "os", "Espanha": "a", "Estados Unidos": "os",
-    "Filipinas": "as", "França": "a", "Holanda": "a", "Índia": "a", "Indonésia": "a",
-    "Inglaterra": "a", "Irã": "o", "Itália": "a", "Japão": "o", "Líbano": "o",
-    "Malásia": "a", "México": "o", "Nicarágua": "a", "Noruega": "a", "Nova Zelândia": "a",
-    "Países Baixos": "os", "Panamá": "o", "Paraguai": "o", "Pérsia": "a", "Peru": "o",
-    "Reino Unido": "o", "República Checa": "a", "República Dominicana": "a",
-    "Romênia": "a", "Rússia": "a", "Singapura": "a", "Suécia": "a", "Uruguai": "o",
-    "Venezuela": "a", "Vietnã": "o"
-}
 
 # Colunas necessárias
 NCM_COLS = ['VL_FOB', 'CO_PAIS', 'CO_MES', 'SG_UF_NCM', 'CO_NCM']
@@ -145,8 +129,24 @@ def formatar_valor(valor):
 def sanitize_filename(filename):
     return re.sub(r'[\\/*?:"<>|]', "_", filename)
 
-# --- CLASSE DE DOCUMENTO (Copiada de 1_Análise_por_País.py) ---
+# --- FUNÇÃO ADICIONADA ---
+def calcular_diferenca_percentual(valor_atual, valor_anterior):
+    """Calcula a diferença percentual entre dois valores."""
+    if valor_anterior == 0:
+        return 0.0, "acréscimo" if valor_atual > 0 else "redução" if valor_atual < 0 else "estabilidade"
+    
+    diferenca = round(((valor_atual - valor_anterior) / valor_anterior) * 100, 2)
+    
+    if diferenca > 0:
+        tipo_diferenca = "um acréscimo"
+    elif diferenca < 0:
+        tipo_diferenca = "uma redução"
+    else:
+        tipo_diferenca = "uma estabilidade"
+    diferenca = abs(diferenca)
+    return diferenca, tipo_diferenca
 
+# --- CLASSE DOCUMENTO ADICIONADA ---
 class DocumentoApp:
     def __init__(self, logo_path):
         self.doc = Document()
@@ -188,9 +188,6 @@ class DocumentoApp:
     def nova_secao(self):
         self.secao_atual += 1
         self.subsecao_atual = 0
-
-    def nova_subsecao(self):
-        self.subsecao_atual += 1
 
     def criar_cabecalho(self):
         section = self.doc.sections[0]
@@ -279,9 +276,10 @@ class DocumentoApp:
         st.success(f"Documento '{nome_arquivo_sanitizado}' gerado com sucesso!")
         
         return file_bytes, nome_arquivo_sanitizado
+# --- FIM DAS FUNÇÕES COPIADAS ---
+
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-
 st.sidebar.empty()
 logo_sidebar_path = "LogoMinasGerais.png"
 if os.path.exists(logo_sidebar_path):
@@ -340,11 +338,7 @@ if 'arquivos_gerados_produto' not in st.session_state:
 if st.button("Iniciar Análise por Produto"):
     
     st.session_state.arquivos_gerados_produto = []
-    
     logo_path_to_use = "LogoMinasGerais.png" 
-    if not os.path.exists(logo_path_to_use):
-        st.warning(f"Aviso: A logo 'LogoMinasGerais.png' não foi encontrada. O cabeçalho será gerado sem a logo.")
-        logo_path_to_use = None
     
     with st.spinner(f"Processando dados de produto..."):
         try:
@@ -391,20 +385,22 @@ if st.button("Iniciar Análise por Produto"):
                 produtos_para_processar = produtos_selecionados
             else:
                 # Se agrupado, processa a lista inteira como um único item
-                produtos_para_processar = [" e ".join([p.split(' - ')[1] for p in produtos_selecionados])] # Nome amigável
+                produtos_para_processar = [", ".join([p.split(' - ')[1] for p in produtos_selecionados])] # Nome amigável
 
-            for produto_nome in produtos_para_processar:
+            for produto_nome_completo in produtos_para_processar:
                 
                 app = DocumentoApp(logo_path=logo_path_to_use)
                 
                 if agrupado:
-                    st.subheader(f"Análise Agrupada de: {produto_nome}")
+                    st.subheader(f"Análise Agrupada de: {produto_nome_completo}")
                     codigos_sh4_loop = [s.split(" - ")[0] for s in produtos_selecionados]
                     titulo_doc = f"Briefing de Produtos (Agrupado) - {ano_principal}"
+                    produto_nome_doc = "dos produtos selecionados" # Nome para o texto
                 else:
-                    st.subheader(f"Análise de: {produto_nome}")
-                    codigos_sh4_loop = [produto_nome.split(" - ")[0]]
-                    titulo_doc = f"Briefing - {produto_nome.split(' - ')[0]} - {ano_principal}"
+                    st.subheader(f"Análise de: {produto_nome_completo}")
+                    codigos_sh4_loop = [produto_nome_completo.split(" - ")[0]]
+                    titulo_doc = f"Briefing - {produto_nome_completo.split(' - ')[0]} - {ano_principal}"
+                    produto_nome_doc = f"de {produto_nome_completo.split(' - ')[1]}" # Nome para o texto
                 
                 app.set_titulo(titulo_doc)
 
@@ -417,7 +413,7 @@ if st.button("Iniciar Análise por Produto"):
                 exp_total_princ = df_exp_princ_f['VL_FOB'].sum()
                 exp_total_comp = df_exp_comp_f['VL_FOB'].sum()
                 dif_exp, tipo_dif_exp = calcular_diferenca_percentual(exp_total_princ, exp_total_comp)
-
+                
                 exp_paises_princ = df_exp_princ_f.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
                 exp_paises_comp = df_exp_comp_f.groupby('CO_PAIS')['VL_FOB'].sum().reset_index()
 
@@ -432,7 +428,7 @@ if st.button("Iniciar Análise por Produto"):
                                      on="País", how="outer").fillna(0)
                 
                 exp_final['Variação %'] = 100 * (exp_final[f'Valor {ano_principal} (US$)'] - exp_final[f'Valor {ano_comparacao} (US$)']) / exp_final[f'Valor {ano_comparacao} (US$)']
-                exp_final['Variação %'] = exp_final['Variação %'].fillna(0).round(2)
+                exp_final['Variação %'] = exp_final['Variação %'].replace([float('inf'), float('-inf')], 0).fillna(0).round(2)
 
                 exp_final[f'Valor {ano_principal}'] = exp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
                 exp_final[f'Valor {ano_comparacao}'] = exp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
@@ -441,13 +437,13 @@ if st.button("Iniciar Análise por Produto"):
                              [['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']])
                 
                 # --- Geração de Texto (Exportação) ---
-                texto_exp_total = f"Em {nome_periodo}, as exportações de Minas Gerais de {produto_nome} somaram {formatar_valor(exp_total_princ)}, {tipo_dif_exp} de {dif_exp:.1f}% em relação a {nome_periodo_comp}."
-                texto_exp_paises = "Os principais países de destino foram: " + ", ".join(exp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(5)['País'].tolist()) + "."
-
+                texto_exp_total = f"Em {nome_periodo}, as exportações de Minas Gerais {produto_nome_doc} somaram {formatar_valor(exp_total_princ)}, {tipo_dif_exp} de {dif_exp:.1f}% em relação a {nome_periodo_comp}."
                 app.nova_secao()
                 app.adicionar_titulo("Exportações de Produto")
                 app.adicionar_conteudo_formatado(texto_exp_total)
+                
                 if exp_total_princ > 0:
+                    texto_exp_paises = "Os principais países de destino foram: " + ", ".join(exp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(5)['País'].tolist()) + "."
                     app.adicionar_conteudo_formatado(texto_exp_paises)
                 
                 del df_exp_princ_f, df_exp_comp_f, exp_paises_princ, exp_paises_comp, exp_final
@@ -476,7 +472,7 @@ if st.button("Iniciar Análise por Produto"):
                                      on="País", how="outer").fillna(0)
 
                 imp_final['Variação %'] = 100 * (imp_final[f'Valor {ano_principal} (US$)'] - imp_final[f'Valor {ano_comparacao} (US$)']) / imp_final[f'Valor {ano_comparacao} (US$)']
-                imp_final['Variação %'] = imp_final['Variação %'].fillna(0).round(2)
+                imp_final['Variação %'] = imp_final['Variação %'].replace([float('inf'), float('-inf')], 0).fillna(0).round(2)
                 
                 imp_final[f'Valor {ano_principal}'] = imp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
                 imp_final[f'Valor {ano_comparacao}'] = imp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
@@ -485,13 +481,14 @@ if st.button("Iniciar Análise por Produto"):
                              [['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']])
                 
                 # --- Geração de Texto (Importação) ---
-                texto_imp_total = f"Em {nome_periodo}, as importações de Minas Gerais de {produto_nome} somaram {formatar_valor(imp_total_princ)}, {tipo_dif_imp} de {dif_imp:.1f}% em relação a {nome_periodo_comp}."
-                texto_imp_paises = "Os principais países de origem foram: " + ", ".join(imp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(5)['País'].tolist()) + "."
-
+                texto_imp_total = f"Em {nome_periodo}, as importações de Minas Gerais {produto_nome_doc} somaram {formatar_valor(imp_total_princ)}, {tipo_dif_imp} de {dif_imp:.1f}% em relação a {nome_periodo_comp}."
+                
                 app.nova_secao()
                 app.adicionar_titulo("Importações de Produto")
                 app.adicionar_conteudo_formatado(texto_imp_total)
+                
                 if imp_total_princ > 0:
+                    texto_imp_paises = "Os principais países de origem foram: " + ", ".join(imp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(5)['País'].tolist()) + "."
                     app.adicionar_conteudo_formatado(texto_imp_paises)
                 
                 del df_imp_princ_f, df_imp_comp_f, imp_paises_princ, imp_paises_comp, imp_final
@@ -507,10 +504,7 @@ if st.button("Iniciar Análise por Produto"):
             st.error(f"Ocorreu um erro inesperado durante a análise de produto:")
             st.exception(e)
 
-# --- ----------------------------------- ---
 # --- Bloco de exibição de Download (COM LÓGICA DE ZIP) ---
-# --- ----------------------------------- ---
-
 if st.session_state.arquivos_gerados_produto:
     st.header("4. Relatórios Gerados")
     st.info("Clique para baixar os relatórios. Eles permanecerão aqui até que você gere um novo relatório.")
@@ -545,3 +539,20 @@ if st.session_state.arquivos_gerados_produto:
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             key=f"download_{arquivo['name']}"
         )
+
+# --- Bloco de Rodapé (Corrigido com Logo à Esquerda) ---
+st.divider() 
+
+col1, col2 = st.columns([0.3, 0.7], vertical_alignment="center") 
+
+with col1:
+    # Coluna 1 (menor) agora contém a logo
+    logo_footer_path = "AEST Sede.png"
+    if os.path.exists(logo_footer_path):
+        st.image(logo_footer_path, width=150)
+    else:
+        st.caption("Logo AEST não encontrada.")
+
+with col2:
+    # Coluna 2 (maior) agora contém o texto
+    st.caption("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
