@@ -44,3 +44,4 @@ with col2:
     st.caption("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
 
 
+
