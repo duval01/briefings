@@ -93,7 +93,7 @@ def obter_lista_de_produtos_sh2():
     df_ncm = obter_dados_produtos_ncm()
     if df_ncm is not None:
         df_sh2 = df_ncm.drop_duplicates(subset=['CO_SH2']).dropna()
-        # --- ALTERAÇÃO AQUI: zfill(2) para códigos SH2 ---
+        # --- CORREÇÃO AQUI: zfill(2) para códigos SH2 ---
         df_sh2['Display'] = df_sh2['CO_SH2'].astype(str).str.zfill(2) + " - " + df_sh2['NO_SH2_POR']
         lista_produtos = df_sh2['Display'].unique().tolist()
         lista_produtos.sort()
@@ -114,7 +114,7 @@ def obter_lista_de_produtos_sh4(codigos_sh2_selecionados):
         codigos_sh2_str = [str(c).zfill(2) for c in codigos_sh2_selecionados]
         df_sh4 = df_sh4[df_sh4['CO_SH2'].astype(str).str.zfill(2).isin(codigos_sh2_str)]
 
-    # --- ALTERAÇÃO AQUI: zfill(4) para códigos SH4 ---
+    # --- CORREÇÃO AQUI: zfill(4) para códigos SH4 ---
     df_sh4['Display'] = df_sh4['CO_SH4'].astype(str).str.zfill(4) + " - " + df_sh4['NO_SH4_POR']
     lista_produtos = df_sh4['Display'].unique().tolist()
     lista_produtos.sort()
@@ -325,7 +325,7 @@ if os.path.exists(logo_sidebar_path):
 st.header("1. Configurações da Análise de Produto (NCM)")
 
 # --- Callback para limpar o state ---
-def clear_download_state():
+def clear_download_state_prod():
     """Limpa os relatórios gerados da sessão."""
     if 'arquivos_gerados_produto' in st.session_state:
         st.session_state.arquivos_gerados_produto = []
@@ -339,19 +339,19 @@ with col1:
     ano_principal = st.number_input(
         "Ano de Referência:", min_value=1998, max_value=ano_atual, value=ano_atual,
         help="O ano principal que você quer analisar.",
-        on_change=clear_download_state # Adiciona callback
+        on_change=clear_download_state_prod 
     )
     ano_comparacao = st.number_input(
         "Ano de Comparação:", min_value=1998, max_value=ano_atual, value=ano_atual - 1,
         help="O ano contra o qual você quer comparar.",
-        on_change=clear_download_state # Adiciona callback
+        on_change=clear_download_state_prod 
     )
     # --- ALTERAÇÃO AQUI: Filtro de Mês movido para col1 ---
     meses_selecionados = st.multiselect(
         "Meses de Análise (opcional):",
         options=LISTA_MESES,
         help="Selecione os meses. Se deixar em branco, o ano inteiro será analisado.",
-        on_change=clear_download_state # Adiciona callback
+        on_change=clear_download_state_prod 
     )
     # --- FIM DA ALTERAÇÃO ---
 
@@ -361,7 +361,7 @@ with col2:
         "Filtrar por Capítulo (SH2) (opcional):",
         options=lista_de_produtos_sh2,
         help="Filtre a lista de produtos SH4 abaixo.",
-        on_change=clear_download_state # Adiciona callback
+        on_change=clear_download_state_prod 
     )
     # Extrai os códigos numéricos
     codigos_sh2_selecionados = [int(s.split(" - ")[0]) for s in sh2_selecionados_nomes]
@@ -374,11 +374,12 @@ with col2:
         options=lista_de_produtos_sh4_filtrada, # Usa a lista filtrada
         default=[],
         help="Você pode digitar para pesquisar. O filtro usa os 4 dígitos do SH4.",
-        on_change=clear_download_state # Adiciona callback
+        on_change=clear_download_state_prod 
     )
 
 # --- Lógica de Agrupamento ---
 agrupado = True
+nome_agrupamento = None # --- ADICIONADO ---
 if len(produtos_selecionados) > 1:
     st.header("2. Opções de Agrupamento")
     agrupamento_input = st.radio(
@@ -386,9 +387,25 @@ if len(produtos_selecionados) > 1:
         ("agrupados", "separados"),
         index=0,
         horizontal=True,
-        on_change=clear_download_state # Adiciona callback
+        on_change=clear_download_state_prod 
     )
     agrupado = (agrupamento_input == "agrupados")
+    
+    # --- ALTERAÇÃO AQUI: Adiciona caixa de nome ---
+    if agrupado:
+        quer_nome_agrupamento = st.checkbox(
+            "Deseja dar um nome para este agrupamento de produtos?", 
+            key="prod_nome_grupo",
+            on_change=clear_download_state_prod
+        )
+        if quer_nome_agrupamento:
+            nome_agrupamento = st.text_input(
+                "Digite o nome do agrupamento:", 
+                key="prod_nome_input",
+                on_change=clear_download_state_prod
+            )
+    # --- FIM DA ALTERAÇÃO ---
+    
     st.header("3. Gerar Análise")
 else:
     st.header("2. Gerar Análise")
@@ -447,8 +464,9 @@ if st.button("Iniciar Análise por Produto"):
             if not agrupado:
                 produtos_para_processar = produtos_selecionados
             else:
-                # Se agrupado, processa a lista inteira como um único item
-                produtos_para_processar = [", ".join([p.split(' - ')[1] for p in produtos_selecionados])] # Nome amigável
+                # Se agrupado, usa o nome do agrupamento ou um nome genérico
+                nome_grupo = nome_agrupamento if nome_agrupamento else ", ".join([p.split(' - ')[1] for p in produtos_selecionados])
+                produtos_para_processar = [nome_grupo]
 
             for produto_nome_completo in produtos_para_processar:
                 
@@ -459,8 +477,8 @@ if st.button("Iniciar Análise por Produto"):
                     st.subheader(f"Análise Agrupada de: {produto_nome_completo}")
                     codigos_sh4_loop = [s.split(" - ")[0] for s in produtos_selecionados]
                     nome_limpo_arquivo = sanitize_filename(produto_nome_completo)
-                    titulo_doc = f"Briefing - {nome_limpo_arquivo} (Agrupado) - {ano_principal}"
-                    produto_nome_doc = "dos produtos selecionados" # Nome para o texto
+                    titulo_doc = f"Briefing - {nome_limpo_arquivo} - {ano_principal}"
+                    produto_nome_doc = f"de {produto_nome_completo}" # Nome para o texto
                 else:
                     st.subheader(f"Análise de: {produto_nome_completo}")
                     codigos_sh4_loop = [produto_nome_completo.split(" - ")[0]]
