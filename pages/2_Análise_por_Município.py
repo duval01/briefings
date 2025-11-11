@@ -125,7 +125,6 @@ def formatar_valor(valor):
 def sanitize_filename(filename):
     return re.sub(r'[\\/*?:"<>|]', "_", filename)
 
-# --- FUNÇÃO ADICIONADA ---
 def calcular_diferenca_percentual(valor_atual, valor_anterior):
     """Calcula a diferença percentual entre dois valores."""
     if valor_anterior == 0:
@@ -142,7 +141,7 @@ def calcular_diferenca_percentual(valor_atual, valor_anterior):
     diferenca = abs(diferenca)
     return diferenca, tipo_diferenca
 
-# --- CLASSE DOCUMENTO ADICIONADA ---
+# --- CLASSE DOCUMENTO ---
 class DocumentoApp:
     def __init__(self, logo_path):
         self.doc = Document()
@@ -170,7 +169,7 @@ class DocumentoApp:
         run.font.size = Pt(12)
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         
-    def adicionar_paragrafo(self, texto): # Função que estava faltando no original
+    def adicionar_paragrafo(self, texto): 
         p = self.doc.add_paragraph()
         p.paragraph_format.first_line_indent = Cm(1.25)
         run = p.add_run(texto)
@@ -178,7 +177,6 @@ class DocumentoApp:
         run.font.size = Pt(12)
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
 
-    # --- CORREÇÃO AQUI: Removida a linha solta que causava o SyntaxError ---
     def adicionar_titulo(self, texto):
         p = self.doc.add_paragraph()
         if self.subsecao_atual == 0:
@@ -189,7 +187,6 @@ class DocumentoApp:
         run.font.size = Pt(12)
         run.bold = True
         p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    # --- FIM DA CORREÇÃO ---
 
     def nova_secao(self):
         self.secao_atual += 1
@@ -314,7 +311,6 @@ with col1:
     municipios_selecionados = st.multiselect(
         "Selecione o(s) município(s):",
         options=lista_de_municipios,
-        # --- CORREÇÃO AQUI: Default com nome correto ---
         default=["BELO HORIZONTE"],
         help="Você pode digitar para pesquisar.",
         on_change=clear_download_state_mun
@@ -333,8 +329,9 @@ with col2:
         on_change=clear_download_state_mun
     )
 
-# --- Lógica de Agrupamento ---
+# --- ALTERAÇÃO AQUI: Lógica de Agrupamento com Nome ---
 agrupado = True
+nome_agrupamento = None
 if len(municipios_selecionados) > 1:
     st.header("2. Opções de Agrupamento")
     agrupamento_input = st.radio(
@@ -345,9 +342,25 @@ if len(municipios_selecionados) > 1:
         on_change=clear_download_state_mun
     )
     agrupado = (agrupamento_input == "agrupados")
+    
+    if agrupado:
+        quer_nome_agrupamento = st.checkbox(
+            "Deseja dar um nome para este agrupamento de municípios?", 
+            key="mun_nome_grupo",
+            on_change=clear_download_state_mun
+        )
+        if quer_nome_agrupamento:
+            nome_agrupamento = st.text_input(
+                "Digite o nome do agrupamento:", 
+                key="mun_nome_input",
+                on_change=clear_download_state_mun
+            )
+
     st.header("3. Gerar Análise")
 else:
     st.header("2. Gerar Análise")
+# --- FIM DA ALTERAÇÃO ---
+
 
 # --- Inicialização do Session State ---
 if 'arquivos_gerados_municipio' not in st.session_state:
@@ -398,7 +411,7 @@ if st.button("Iniciar Análise por Município"):
             if not agrupado:
                 municipios_para_processar = municipios_selecionados
             else:
-                municipios_para_processar = [", ".join(municipios_selecionados)]
+                municipios_para_processar = [nome_agrupamento if nome_agrupamento else ", ".join(municipios_selecionados)]
 
             for municipio_nome in municipios_para_processar:
                 
@@ -408,8 +421,8 @@ if st.button("Iniciar Análise por Município"):
                     st.subheader(f"Análise Agrupada de: {municipio_nome}")
                     codigos_municipios_loop = codigos_municipios_map
                     nome_limpo_arquivo = sanitize_filename(municipio_nome)
-                    titulo_doc = f"Briefing - {nome_limpo_arquivo} (Agrupado) - {ano_principal}"
-                    nome_doc = "dos municípios selecionados"
+                    titulo_doc = f"Briefing - {nome_limpo_arquivo} - {ano_principal}"
+                    nome_doc = f"de {municipio_nome}"
                 else:
                     st.subheader(f"Análise de: {municipio_nome}")
                     codigos_municipios_loop = [mapa_codigos_municipios.get(municipio_nome)]
@@ -447,7 +460,7 @@ if st.button("Iniciar Análise por Município"):
                 exp_final[f'Valor {ano_principal}'] = exp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
                 exp_final[f'Valor {ano_comparacao}'] = exp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
                 
-                df_display_exp = exp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False)
+                df_display_exp = exp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).reset_index(drop=True)
                 st.dataframe(
                     df_display_exp[['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']].head(10),
                     hide_index=True
@@ -493,7 +506,7 @@ if st.button("Iniciar Análise por Município"):
                 imp_final[f'Valor {ano_principal}'] = imp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
                 imp_final[f'Valor {ano_comparacao}'] = imp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
 
-                df_display_imp = imp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False)
+                df_display_imp = imp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).reset_index(drop=True)
                 st.dataframe(
                     df_display_imp[['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']].head(10),
                     hide_index=True
@@ -525,6 +538,8 @@ if st.button("Iniciar Análise por Município"):
 # --- Bloco de Download (com ZIP) ---
 if st.session_state.arquivos_gerados_municipio:
     st.header("4. Relatórios Gerados")
+    st.info("Clique para baixar os relatórios. Eles permanecerão aqui até que você gere um novo relatório.")
+
     
     if len(st.session_state.arquivos_gerados_municipio) > 1:
         # ZIP
