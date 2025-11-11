@@ -23,6 +23,21 @@ MESES_MAPA = {
 }
 LISTA_MESES = list(MESES_MAPA.keys())
 
+ARTIGOS_PAISES_MAP = {
+    "Afeganistão": "o", "África do Sul": "a", "Alemanha": "a", "Arábia Saudita": "a",
+    "Argentina": "a", "Austrália": "a", "Bélgica": "a", "Brasil": "o", "Canadá": "o",
+    "Chade": "o", "Chile": "o", "China": "a", "Colômbia": "a", "Congo": "o",
+    "Coreia do Norte": "a", "Coreia do Sul": "a", "Costa Rica": "a", "Equador": "o",
+    "Egito": "o", "Emirados Árabes Unidos": "os", "Espanha": "a", "Estados Unidos": "os",
+    "Filipinas": "as", "França": "a", "Holanda": "a", "Índia": "a", "Indonésia": "a",
+    "Inglaterra": "a", "Irã": "o", "Itália": "a", "Japão": "o", "Líbano": "o",
+    "Malásia": "a", "México": "o", "Nicarágua": "a", "Noruega": "a", "Nova Zelândia": "a",
+    "Países Baixos": "os", "Panamá": "o", "Paraguai": "o", "Pérsia": "a", "Peru": "o",
+    "Reino Unido": "o", "República Checa": "a", "República Dominicana": "a",
+    "Romênia": "a", "Rússia": "a", "Singapura": "a", "Suécia": "a", "Uruguai": "o",
+    "Venezuela": "a", "Vietnã": "o"
+}
+
 # Colunas necessárias
 NCM_COLS = ['VL_FOB', 'CO_PAIS', 'CO_MES', 'SG_UF_NCM', 'CO_NCM']
 NCM_DTYPES = {'CO_NCM': str, 'CO_SH4': str}
@@ -75,23 +90,47 @@ def obter_dados_paises():
     url_pais = "https://balanca.economia.gov.br/balanca/bd/tabelas/PAIS.csv"
     df_pais = carregar_dataframe(url_pais, "PAIS.csv", usecols=['NO_PAIS', 'CO_PAIS'], mostrar_progresso=False) 
     if df_pais is not None and not df_pais.empty:
-        # Cria um mapa de Código -> Nome
         return pd.Series(df_pais.NO_PAIS.values, index=df_pais.CO_PAIS).to_dict()
     return {}
 
 @st.cache_data
-def obter_lista_de_produtos_sh4():
-    """Retorna uma lista de produtos (SH4)."""
+def obter_dados_produtos_ncm():
+    """Carrega a tabela NCM completa (SH2 e SH4) e armazena em cache."""
     url_ncm = "https://balanca.economia.gov.br/balanca/bd/tabelas/NCM_SH.csv"
-    df_ncm = carregar_dataframe(url_ncm, "NCM_SH.csv", usecols=['CO_SH4', 'NO_SH4_POR'], mostrar_progresso=False)
+    # Carrega as colunas SH2 e SH4
+    df_ncm = carregar_dataframe(url_ncm, "NCM_SH.csv", usecols=['CO_SH2', 'NO_SH2_POR', 'CO_SH4', 'NO_SH4_POR'], mostrar_progresso=False)
     if df_ncm is not None:
-        # Formata como "Código - Nome"
-        df_ncm = df_ncm.drop_duplicates(subset=['CO_SH4']).dropna() # Remove duplicados
-        df_ncm['Display'] = df_ncm['CO_SH4'].astype(str) + " - " + df_ncm['NO_SH4_POR']
-        lista_produtos = df_ncm['Display'].unique().tolist()
+        return df_ncm
+    return None
+
+def obter_lista_de_produtos_sh2():
+    """Retorna uma lista de capítulos (SH2)."""
+    df_ncm = obter_dados_produtos_ncm()
+    if df_ncm is not None:
+        df_sh2 = df_ncm.drop_duplicates(subset=['CO_SH2']).dropna()
+        df_sh2['Display'] = df_sh2['CO_SH2'].astype(str).str.zfill(2) + " - " + df_sh2['NO_SH2_POR']
+        lista_produtos = df_sh2['Display'].unique().tolist()
         lista_produtos.sort()
         return lista_produtos
-    return ["Erro ao carregar lista de produtos"]
+    return ["Erro ao carregar lista de capítulos"]
+
+def obter_lista_de_produtos_sh4(codigos_sh2_selecionados):
+    """Retorna uma lista de produtos (SH4), opcionalmente filtrada por SH2."""
+    df_ncm = obter_dados_produtos_ncm()
+    if df_ncm is None:
+        return ["Erro ao carregar lista de produtos"]
+
+    df_sh4 = df_ncm.drop_duplicates(subset=['CO_SH4']).dropna(subset=['CO_SH4', 'NO_SH4_POR'])
+
+    # Filtra por SH2 se algum for selecionado
+    if codigos_sh2_selecionados:
+        df_sh4 = df_sh4[df_sh4['CO_SH2'].isin(codigos_sh2_selecionados)]
+
+    df_sh4['Display'] = df_sh4['CO_SH4'].astype(str) + " - " + df_sh4['NO_SH4_POR']
+    lista_produtos = df_sh4['Display'].unique().tolist()
+    lista_produtos.sort()
+    return lista_produtos
+
 
 def get_sh4(co_ncm):
     """Extrai SH4 de um CO_NCM."""
@@ -129,7 +168,6 @@ def formatar_valor(valor):
 def sanitize_filename(filename):
     return re.sub(r'[\\/*?:"<>|]', "_", filename)
 
-# --- FUNÇÃO ADICIONADA ---
 def calcular_diferenca_percentual(valor_atual, valor_anterior):
     """Calcula a diferença percentual entre dois valores."""
     if valor_anterior == 0:
@@ -146,7 +184,7 @@ def calcular_diferenca_percentual(valor_atual, valor_anterior):
     diferenca = abs(diferenca)
     return diferenca, tipo_diferenca
 
-# --- CLASSE DOCUMENTO ADICIONADA ---
+# --- CLASSE DOCUMENTO ---
 class DocumentoApp:
     def __init__(self, logo_path):
         self.doc = Document()
@@ -287,7 +325,13 @@ if os.path.exists(logo_sidebar_path):
 
 st.header("1. Configurações da Análise de Produto (NCM)")
 
-lista_de_produtos = obter_lista_de_produtos_sh4()
+# --- ALTERAÇÃO AQUI: Callback para limpar o state ---
+def clear_download_state():
+    """Limpa os relatórios gerados da sessão."""
+    if 'arquivos_gerados_produto' in st.session_state:
+        st.session_state.arquivos_gerados_produto = []
+
+lista_de_produtos_sh2 = obter_lista_de_produtos_sh2()
 mapa_nomes_paises = obter_dados_paises()
 ano_atual = datetime.now().year
 
@@ -295,24 +339,42 @@ col1, col2 = st.columns(2)
 with col1:
     ano_principal = st.number_input(
         "Ano de Referência:", min_value=1998, max_value=ano_atual, value=ano_atual,
-        help="O ano principal que você quer analisar."
+        help="O ano principal que você quer analisar.",
+        on_change=clear_download_state # Adiciona callback
     )
-    produtos_selecionados = st.multiselect(
-        "Selecione o(s) produto(s) (SH4):",
-        options=lista_de_produtos,
-        default=[p for p in lista_de_produtos if "0901" in p][:1], # Pega "0901 - Café"
-        help="Você pode digitar para pesquisar. O filtro usa os 4 dígitos do SH4."
+    ano_comparacao = st.number_input(
+        "Ano de Comparação:", min_value=1998, max_value=ano_atual, value=ano_atual - 1,
+        help="O ano contra o qual você quer comparar.",
+        on_change=clear_download_state # Adiciona callback
     )
 
 with col2:
-    ano_comparacao = st.number_input(
-        "Ano de Comparação:", min_value=1998, max_value=ano_atual, value=ano_atual - 1,
-        help="O ano contra o qual você quer comparar."
+    # --- ALTERAÇÃO AQUI: Adiciona filtro SH2 ---
+    sh2_selecionados_nomes = st.multiselect(
+        "Filtrar por Capítulo (SH2) (opcional):",
+        options=lista_de_produtos_sh2,
+        help="Filtre a lista de produtos SH4 abaixo.",
+        on_change=clear_download_state # Adiciona callback
     )
+    codigos_sh2_selecionados = [s.split(" - ")[0] for s in sh2_selecionados_nomes]
+    
+    # Lista de SH4 agora é filtrada pelo SH2 selecionado
+    lista_de_produtos_sh4_filtrada = obter_lista_de_produtos_sh4(codigos_sh2_selecionados)
+    
+    produtos_selecionados = st.multiselect(
+        "Selecione o(s) produto(s) (SH4):",
+        options=lista_de_produtos_sh4_filtrada, # Usa a lista filtrada
+        default=[], # Default vazio para evitar erros
+        help="Você pode digitar para pesquisar. O filtro usa os 4 dígitos do SH4.",
+        on_change=clear_download_state # Adiciona callback
+    )
+    # --- FIM DA ALTERAÇÃO ---
+
     meses_selecionados = st.multiselect(
         "Meses de Análise (opcional):",
         options=LISTA_MESES,
-        help="Selecione os meses. Se deixar em branco, o ano inteiro será analisado."
+        help="Selecione os meses. Se deixar em branco, o ano inteiro será analisado.",
+        on_change=clear_download_state # Adiciona callback
     )
 
 # --- Lógica de Agrupamento ---
@@ -323,7 +385,8 @@ if len(produtos_selecionados) > 1:
         "Deseja que os dados sejam agrupados ou separados?",
         ("agrupados", "separados"),
         index=0,
-        horizontal=True
+        horizontal=True,
+        on_change=clear_download_state # Adiciona callback
     )
     agrupado = (agrupamento_input == "agrupados")
     st.header("3. Gerar Análise")
@@ -433,6 +496,7 @@ if st.button("Iniciar Análise por Produto"):
                 exp_final[f'Valor {ano_principal}'] = exp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
                 exp_final[f'Valor {ano_comparacao}'] = exp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
                 
+                # --- ALTERAÇÃO AQUI: Ordena o Dataframe ---
                 st.dataframe(exp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(10)
                              [['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']])
                 
@@ -477,6 +541,7 @@ if st.button("Iniciar Análise por Produto"):
                 imp_final[f'Valor {ano_principal}'] = imp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
                 imp_final[f'Valor {ano_comparacao}'] = imp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
 
+                # --- ALTERAÇÃO AQUI: Ordena o Dataframe ---
                 st.dataframe(imp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(10)
                              [['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']])
                 
