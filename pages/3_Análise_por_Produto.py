@@ -98,7 +98,6 @@ def obter_dados_paises():
 def obter_dados_produtos_ncm():
     """Carrega a tabela NCM completa (SH2 e SH4) e armazena em cache."""
     url_ncm = "https://balanca.economia.gov.br/balanca/bd/tabelas/NCM_SH.csv"
-    # Carrega as colunas SH2 e SH4
     df_ncm = carregar_dataframe(url_ncm, "NCM_SH.csv", usecols=['CO_SH2', 'NO_SH2_POR', 'CO_SH4', 'NO_SH4_POR'], mostrar_progresso=False)
     if df_ncm is not None:
         return df_ncm
@@ -109,6 +108,7 @@ def obter_lista_de_produtos_sh2():
     df_ncm = obter_dados_produtos_ncm()
     if df_ncm is not None:
         df_sh2 = df_ncm.drop_duplicates(subset=['CO_SH2']).dropna()
+        # --- ALTERAÇÃO AQUI: zfill(2) para códigos SH2 ---
         df_sh2['Display'] = df_sh2['CO_SH2'].astype(str).str.zfill(2) + " - " + df_sh2['NO_SH2_POR']
         lista_produtos = df_sh2['Display'].unique().tolist()
         lista_produtos.sort()
@@ -130,7 +130,8 @@ def obter_lista_de_produtos_sh4(codigos_sh2_selecionados):
         # Filtra o DataFrame
         df_sh4 = df_sh4[df_sh4['CO_SH2'].astype(str).str.zfill(2).isin(codigos_sh2_str)]
 
-    df_sh4['Display'] = df_sh4['CO_SH4'].astype(str) + " - " + df_sh4['NO_SH4_POR']
+    # --- ALTERAÇÃO AQUI: zfill(4) para códigos SH4 ---
+    df_sh4['Display'] = df_sh4['CO_SH4'].astype(str).str.zfill(4) + " - " + df_sh4['NO_SH4_POR']
     lista_produtos = df_sh4['Display'].unique().tolist()
     lista_produtos.sort()
     return lista_produtos
@@ -138,15 +139,16 @@ def obter_lista_de_produtos_sh4(codigos_sh2_selecionados):
 
 def get_sh4(co_ncm):
     """Extrai SH4 de um CO_NCM."""
-    co_ncm_str = str(co_ncm)
-    if pd.isna(co_ncm_str):
+    co_ncm_str = str(co_ncm).strip()
+    if pd.isna(co_ncm_str) or co_ncm_str == "":
         return None
-    if len(co_ncm_str) == 8:
-        return co_ncm_str[:4]
-    elif len(co_ncm_str) >= 7:
-        return co_ncm_str[:3]
-    else:
-        return None
+    
+    # Garante que o NCM tenha 8 dígitos, preenchendo com 0 à esquerda se necessário
+    co_ncm_str = co_ncm_str.zfill(8)
+    
+    # A lógica original para SH4 estava pegando 3 dígitos para NCMs de 7.
+    # A lógica correta é sempre pegar os 4 primeiros dígitos de um NCM de 8.
+    return co_ncm_str[:4]
 
 def formatar_valor(valor):
     prefixo = ""
@@ -316,6 +318,7 @@ class DocumentoApp:
         file_stream.seek(0)
         
         file_bytes = file_stream.getvalue()
+        # --- ALTERAÇÃO AQUI: Mensagem de sucesso usa o nome do arquivo ---
         st.success(f"Documento '{nome_arquivo_sanitizado}' gerado com sucesso!")
         
         return file_bytes, nome_arquivo_sanitizado
@@ -352,17 +355,15 @@ with col1:
         help="O ano contra o qual você quer comparar.",
         on_change=clear_download_state # Adiciona callback
     )
-    # --- ALTERAÇÃO AQUI: Filtro de Mês movido para col1 ---
     meses_selecionados = st.multiselect(
         "Meses de Análise (opcional):",
         options=LISTA_MESES,
         help="Selecione os meses. Se deixar em branco, o ano inteiro será analisado.",
         on_change=clear_download_state # Adiciona callback
     )
-    # --- FIM DA ALTERAÇÃO ---
 
 with col2:
-    # --- Filtro SH2 ---
+    # Filtro SH2
     sh2_selecionados_nomes = st.multiselect(
         "Filtrar por Capítulo (SH2) (opcional):",
         options=lista_de_produtos_sh2,
@@ -460,18 +461,22 @@ if st.button("Iniciar Análise por Produto"):
                 
                 app = DocumentoApp(logo_path=logo_path_to_use)
                 
+                # --- ALTERAÇÃO AQUI: Título dinâmico ---
                 if agrupado:
                     st.subheader(f"Análise Agrupada de: {produto_nome_completo}")
                     codigos_sh4_loop = [s.split(" - ")[0] for s in produtos_selecionados]
-                    titulo_doc = f"Briefing de Produtos (Agrupado) - {ano_principal}"
+                    nome_limpo_arquivo = sanitize_filename(produto_nome_completo)
+                    titulo_doc = f"Briefing - {nome_limpo_arquivo} (Agrupado) - {ano_principal}"
                     produto_nome_doc = "dos produtos selecionados" # Nome para o texto
                 else:
                     st.subheader(f"Análise de: {produto_nome_completo}")
                     codigos_sh4_loop = [produto_nome_completo.split(" - ")[0]]
-                    titulo_doc = f"Briefing - {produto_nome_completo.split(' - ')[0]} - {ano_principal}"
+                    nome_limpo_arquivo = sanitize_filename(produto_nome_completo.split(" - ")[1])
+                    titulo_doc = f"Briefing - {nome_limpo_arquivo} - {ano_principal}"
                     produto_nome_doc = f"de {produto_nome_completo.split(' - ')[1]}" # Nome para o texto
                 
                 app.set_titulo(titulo_doc)
+                # --- FIM DA ALTERAÇÃO ---
 
                 # --- Processamento Exportação ---
                 st.header("Principais Destinos (Exportação de MG)")
@@ -502,8 +507,12 @@ if st.button("Iniciar Análise por Produto"):
                 exp_final[f'Valor {ano_principal}'] = exp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
                 exp_final[f'Valor {ano_comparacao}'] = exp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
                 
-                st.dataframe(exp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(10)
-                             [['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']])
+                # --- ALTERAÇÃO AQUI: Ordena e esconde o índice ---
+                df_display_exp = exp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False)
+                st.dataframe(
+                    df_display_exp[['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']].head(10),
+                    hide_index=True
+                )
                 
                 # --- Geração de Texto (Exportação) ---
                 texto_exp_total = f"Em {nome_periodo}, as exportações de Minas Gerais {produto_nome_doc} somaram {formatar_valor(exp_total_princ)}, {tipo_dif_exp} de {dif_exp:.1f}% em relação a {nome_periodo_comp}."
@@ -512,10 +521,10 @@ if st.button("Iniciar Análise por Produto"):
                 app.adicionar_conteudo_formatado(texto_exp_total)
                 
                 if exp_total_princ > 0:
-                    texto_exp_paises = "Os principais países de destino foram: " + ", ".join(exp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(5)['País'].tolist()) + "."
+                    texto_exp_paises = "Os principais países de destino foram: " + ", ".join(df_display_exp.head(5)['País'].tolist()) + "."
                     app.adicionar_conteudo_formatado(texto_exp_paises)
                 
-                del df_exp_princ_f, df_exp_comp_f, exp_paises_princ, exp_paises_comp, exp_final
+                del df_exp_princ_f, df_exp_comp_f, exp_paises_princ, exp_paises_comp, exp_final, df_display_exp
 
                 # --- Processamento Importação ---
                 st.header("Principais Origens (Importação de MG)")
@@ -546,8 +555,12 @@ if st.button("Iniciar Análise por Produto"):
                 imp_final[f'Valor {ano_principal}'] = imp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
                 imp_final[f'Valor {ano_comparacao}'] = imp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
 
-                st.dataframe(imp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(10)
-                             [['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']])
+                # --- ALTERAÇÃO AQUI: Ordena e esconde o índice ---
+                df_display_imp = imp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False)
+                st.dataframe(
+                    df_display_imp[['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']].head(10),
+                    hide_index=True
+                )
                 
                 # --- Geração de Texto (Importação) ---
                 texto_imp_total = f"Em {nome_periodo}, as importações de Minas Gerais {produto_nome_doc} somaram {formatar_valor(imp_total_princ)}, {tipo_dif_imp} de {dif_imp:.1f}% em relação a {nome_periodo_comp}."
@@ -557,10 +570,10 @@ if st.button("Iniciar Análise por Produto"):
                 app.adicionar_conteudo_formatado(texto_imp_total)
                 
                 if imp_total_princ > 0:
-                    texto_imp_paises = "Os principais países de origem foram: " + ", ".join(imp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).head(5)['País'].tolist()) + "."
+                    texto_imp_paises = "Os principais países de origem foram: " + ", ".join(df_display_imp.head(5)['País'].tolist()) + "."
                     app.adicionar_conteudo_formatado(texto_imp_paises)
                 
-                del df_imp_princ_f, df_imp_comp_f, imp_paises_princ, imp_paises_comp, imp_final
+                del df_imp_princ_f, df_imp_comp_f, imp_paises_princ, imp_paises_comp, imp_final, df_display_imp
             
                 # Salva o documento no state
                 file_bytes, file_name = app.finalizar_documento()
