@@ -23,6 +23,21 @@ MESES_MAPA = {
 }
 LISTA_MESES = list(MESES_MAPA.keys())
 
+ARTIGOS_PAISES_MAP = {
+    "Afeganistão": "o", "África do Sul": "a", "Alemanha": "a", "Arábia Saudita": "a",
+    "Argentina": "a", "Austrália": "a", "Bélgica": "a", "Brasil": "o", "Canadá": "o",
+    "Chade": "o", "Chile": "o", "China": "a", "Colômbia": "a", "Congo": "o",
+    "Coreia do Norte": "a", "Coreia do Sul": "a", "Costa Rica": "a", "Equador": "o",
+    "Egito": "o", "Emirados Árabes Unidos": "os", "Espanha": "a", "Estados Unidos": "os",
+    "Filipinas": "as", "França": "a", "Holanda": "a", "Índia": "a", "Indonésia": "a",
+    "Inglaterra": "a", "Irã": "o", "Itália": "a", "Japão": "o", "Líbano": "o",
+    "Malásia": "a", "México": "o", "Nicarágua": "a", "Noruega": "a", "Nova Zelândia": "a",
+    "Países Baixos": "os", "Panamá": "o", "Paraguai": "o", "Pérsia": "a", "Peru": "o",
+    "Reino Unido": "o", "República Checa": "a", "República Dominicana": "a",
+    "Romênia": "a", "Rússia": "a", "Singapura": "a", "Suécia": "a", "Uruguai": "o",
+    "Venezuela": "a", "Vietnã": "o"
+}
+
 # Colunas necessárias
 NCM_COLS = ['VL_FOB', 'CO_PAIS', 'CO_MES', 'SG_UF_NCM', 'CO_NCM']
 NCM_DTYPES = {'CO_NCM': str, 'CO_SH4': str}
