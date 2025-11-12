@@ -8,14 +8,9 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Logo da Sidebar (colocada aqui, ela fica ACIMA da navegação)
+# 2. Logo da Sidebar (colocada aqui, ela fica ACIMA da navegação e em TODAS as páginas)
 logo_sidebar_path = "LogoMinasGerais.png"
 if os.path.exists(logo_sidebar_path):
     st.sidebar.image(logo_sidebar_path, width=200)
 
-# 3. O Streamlit cuida do resto
-# Ele irá automaticamente encontrar a pasta 'pages/' e criar a navegação
-# abaixo da logo. A página '0_Home.py' será listada como 'Home'.
-
-# --- O conteúdo da página Home foi movido para 'pages/0_Home.py' ---
-# --- Este arquivo agora controla apenas a configuração global ---
+# 3. O Streamlit cuida do resto e irá ler a pasta 'pages/'
