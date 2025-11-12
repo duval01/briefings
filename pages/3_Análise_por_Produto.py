@@ -202,7 +202,7 @@ class DocumentoApp:
         run.font.size = Pt(12)
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         
-    def adicionar_paragrafo(self, texto): # Função que estava faltando no original
+    def adicionar_paragrafo(self, texto): 
         p = self.doc.add_paragraph()
         p.paragraph_format.first_line_indent = Cm(1.25)
         run = p.add_run(texto)
@@ -346,14 +346,12 @@ with col1:
         help="O ano contra o qual você quer comparar.",
         on_change=clear_download_state_prod 
     )
-    # --- ALTERAÇÃO AQUI: Filtro de Mês movido para col1 ---
     meses_selecionados = st.multiselect(
         "Meses de Análise (opcional):",
         options=LISTA_MESES,
         help="Selecione os meses. Se deixar em branco, o ano inteiro será analisado.",
         on_change=clear_download_state_prod 
     )
-    # --- FIM DA ALTERAÇÃO ---
 
 with col2:
     # --- Filtro SH2 ---
