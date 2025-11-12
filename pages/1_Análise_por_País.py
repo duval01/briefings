@@ -480,62 +480,69 @@ with col1:
     )
 
 with col2:
-    bloco_selecionado = st.selectbox(
-        "Filtrar por Bloco Econômico (opcional):",
-        options=lista_de_blocos,
-        index=0, # Default é "Nenhum / Seleção Manual"
+    # --- ALTERAÇÃO AQUI: Lógica de filtros separados ---
+    blocos_selecionados = st.multiselect(
+        "Filtrar por Bloco(s) Econômico(s) (opcional):",
+        options=[b for b in lista_de_blocos if b != "Nenhum / Seleção Manual"], # Remove a opção manual daqui
+        help="Os países destes blocos serão adicionados à seleção.",
         on_change=clear_download_state_pais
     )
     
-    # Lógica para preencher e travar o seletor de países
-    if bloco_selecionado != "Nenhum / Seleção Manual":
-        paises_default = obter_paises_do_bloco(bloco_selecionado)
-        paises_disabled = True
-    else:
-        paises_default = ["China", "Estados Unidos"]
-        paises_disabled = False
-
-    paises = st.multiselect(
-        "Selecione o(s) país(es):",
+    paises_selecionados_manual = st.multiselect(
+        "Filtrar por País(es) (opcional):",
         options=lista_de_paises,
-        default=paises_default,
-        disabled=paises_disabled, # Trava o seletor se um bloco for escolhido
+        default=["China", "Estados Unidos"],
         help="Você pode digitar para pesquisar e selecionar múltiplos países.",
         on_change=clear_download_state_pais
     )
+    # --- FIM DA ALTERAÇÃO ---
 
 
 # --- LÓGICA CONDICIONAL PARA ENTRADAS ---
 agrupado = True 
 nome_agrupamento = None
 
-if bloco_selecionado != "Nenhum / Seleção Manual":
-    agrupado = True
-    nome_agrupamento = bloco_selecionado
-    st.header("2. Gerar Relatório") # Pula a opção de agrupar
-elif len(paises) > 1:
-    st.header("2. Opções de Agrupamento")
-    agrupamento_input = st.radio(
-        "Deseja que os dados sejam agrupados ou separados?",
-        ("agrupados", "separados"),
-        index=0,
-        horizontal=True,
-        on_change=clear_download_state_pais
-    )
-    agrupado = (agrupamento_input == "agrupados")
+# --- LÓGICA DE COMBINAÇÃO DE FILTROS ---
+paises_do_bloco = []
+if blocos_selecionados:
+    for bloco in blocos_selecionados:
+        paises_do_bloco.extend(obter_paises_do_bloco(bloco))
 
-    if agrupado:
-        quer_nome_agrupamento = st.checkbox(
-            "Deseja dar um nome para este agrupamento?", 
-            key="pais_nome_grupo",
+# Combina as duas listas e remove duplicatas
+paises = sorted(list(set(paises_selecionados_manual + paises_do_bloco)))
+# --- FIM DA LÓGICA DE COMBINAÇÃO ---
+
+
+if len(paises) > 1:
+    st.header("2. Opções de Agrupamento")
+    
+    # Se um bloco foi selecionado, força o agrupamento
+    if blocos_selecionados:
+        agrupado = True
+        st.info(f"Análise de Bloco Econômico será sempre agrupada.")
+        nome_agrupamento = ", ".join(blocos_selecionados)
+    else:
+        agrupamento_input = st.radio(
+            "Deseja que os dados sejam agrupados ou separados?",
+            ("agrupados", "separados"),
+            index=0,
+            horizontal=True,
             on_change=clear_download_state_pais
         )
-        if quer_nome_agrupamento:
-            nome_agrupamento = st.text_input(
-                "Digite o nome do agrupamento:", 
-                key="pais_nome_input",
+        agrupado = (agrupamento_input == "agrupados")
+
+        if agrupado:
+            quer_nome_agrupamento = st.checkbox(
+                "Deseja dar um nome para este agrupamento?", 
+                key="pais_nome_grupo",
                 on_change=clear_download_state_pais
             )
+            if quer_nome_agrupamento:
+                nome_agrupamento = st.text_input(
+                    "Digite o nome do agrupamento:", 
+                    key="pais_nome_input",
+                    on_change=clear_download_state_pais
+                )
     st.header("3. Gerar Relatório")
 else:
     agrupado = False 
