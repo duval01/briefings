@@ -285,7 +285,7 @@ class DocumentoApp:
 # --- CONFIGURAÇÃO DA PÁGINA ---
 # st.sidebar.empty() # Removido
 
-st.header("1. Configurações da Análise de Produto (NCM)")
+st.header("1. Configurações da Análise de Produto")
 
 # --- Callback para limpar o state ---
 def clear_download_state_prod():
