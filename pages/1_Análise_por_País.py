@@ -71,7 +71,8 @@ def ler_dados_csv_online(url, usecols=None, dtypes=None):
                              usecols=usecols)
             return df
         except requests.exceptions.RequestException as e:
-            st.error(f"Erro ao acessar o CSV (tentativa {attempt + 1}/{retries}): {e}")
+            # Log no console, mas não na UI do Streamlit para não poluir
+            print(f"Erro ao acessar o CSV (tentativa {attempt + 1}/{retries}): {e}")
             if "Read timed out" in str(e) and attempt < retries - 1:
                 st.warning("Download demorou muito. Tentando novamente...")
                 continue
@@ -79,10 +80,10 @@ def ler_dados_csv_online(url, usecols=None, dtypes=None):
                 st.warning("Retentando download...")
                 continue
             else:
-                st.error(f"Falha ao baixar após {retries} tentativas.")
+                # Silenciosamente retorna None, a função de carregamento tratará disso
                 return None
         except Exception as e:
-            st.error(f"Erro inesperado ao baixar ou processar o CSV: {e}")
+            print(f"Erro inesperado ao baixar ou processar o CSV: {e}")
             return None
     return None
 
@@ -99,43 +100,45 @@ def carregar_dataframe(url, nome_arquivo, usecols=None, dtypes=None, mostrar_pro
             progress_bar.progress(100, text=f"{nome_arquivo} carregado com sucesso.")
         else:
             progress_bar.empty()
+            # O erro será mostrado na função 'obter_...' se for crítico
     return df
 
 @st.cache_data
 def obter_dados_paises():
-    # --- CORREÇÃO APLICADA: O nome correto da coluna é 'NO_BLOCO' ---
+    # --- CORREÇÃO APLICADA: Usando NO_BLOCO_GR ---
+    # Esta é a coluna que contém a lista dos seus prints (América do Sul, UE-UE, etc.)
     url_pais = "https://balanca.economia.gov.br/balanca/bd/tabelas/PAIS.csv"
-    df_pais = carregar_dataframe(url_pais, "PAIS.csv", usecols=['NO_PAIS', 'CO_PAIS', 'NO_BLOCO'], mostrar_progresso=False) 
+    df_pais = carregar_dataframe(url_pais, "PAIS.csv", usecols=['NO_PAIS', 'CO_PAIS', 'NO_BLOCO_GR'], mostrar_progresso=False) 
     # --- FIM DA CORREÇÃO ---
     if df_pais is not None and not df_pais.empty:
         return df_pais
     return None
 
-# --- NOVAS FUNÇÕES DE BLOCO ---
+# --- FUNÇÕES DE BLOCO CORRIGIDAS ---
 @st.cache_data
 def obter_lista_de_blocos():
-    """Retorna uma lista de nomes de blocos econômicos válidos."""
+    """Retorna uma lista de nomes de blocos econômicos válidos da coluna NO_BLOCO_GR."""
     df_pais = obter_dados_paises()
     if df_pais is not None:
-        # --- CORREÇÃO APLICADA: O nome correto da coluna é 'NO_BLOCO' ---
-        blocos = df_pais['NO_BLOCO'].dropna().unique().tolist()
+        # --- CORREÇÃO APLICADA: Lendo de NO_BLOCO_GR ---
+        blocos = df_pais['NO_BLOCO_GR'].dropna().unique().tolist()
         blocos.sort()
         return blocos
-    return []
+    return [] # Retorna lista vazia em caso de falha
 
 @st.cache_data
 def obter_paises_do_bloco(nome_bloco):
-    """Retorna uma lista de nomes de países para um bloco específico."""
+    """Retorna uma lista de nomes de países para um bloco específico da coluna NO_BLOCO_GR."""
     df_pais = obter_dados_paises()
     if df_pais is not None:
-        # --- CORREÇÃO APLICADA: O nome correto da coluna é 'NO_BLOCO' ---
+        # --- CORREÇÃO APLICADA: Filtrando por NO_BLOCO_GR ---
         df_bloco = df_pais[
-            (df_pais['NO_BLOCO'] == nome_bloco) & 
+            (df_pais['NO_BLOCO_GR'] == nome_bloco) & 
             (df_pais['NO_PAIS'] != "Brasil")
         ]
         return df_bloco['NO_PAIS'].tolist()
-    return []
-# --- FIM DAS NOVAS FUNÇÕES ---
+    return [] # Retorna lista vazia em caso de falha
+# --- FIM DAS FUNÇÕES CORRIGIDAS ---
 
 def obter_lista_de_paises():
     df_pais = obter_dados_paises() 
@@ -143,6 +146,7 @@ def obter_lista_de_paises():
         lista_paises = df_pais[df_pais['NO_PAIS'] != "Brasil"]['NO_PAIS'].unique().tolist()
         lista_paises.sort()
         return lista_paises
+    # Retorno seguro para evitar que o st.multiselect quebre
     return ["Erro ao carregar lista de países"] 
 
 def obter_codigo_pais(nome_pais):
@@ -161,6 +165,7 @@ def validar_paises(paises_selecionados):
     codigos_paises = []
     nomes_paises_validos = []
     paises_invalidos = []
+    # Cacheia o mapa de países para performance
     mapa_paises = pd.Series(df_pais.CO_PAIS.values, index=df_pais.NO_PAIS).to_dict()
     for pais in paises_selecionados:
         if pais.lower() == "brasil":
@@ -184,6 +189,7 @@ def filtrar_dados_por_mg_e_pais(df, codigos_paises, agrupado, meses_para_filtrar
     if agrupado:
         df_filtrado = df_filtrado[df_filtrado['CO_PAIS'].isin(codigos_paises)]
     else:
+        # Se não agrupado, codigos_paises terá apenas um item
         df_filtrado = df_filtrado[df_filtrado['CO_PAIS'] == codigos_paises[0]]
     df_filtrado = df_filtrado[df_filtrado['CO_MES'].isin(meses_para_filtrar)]
     return df_filtrado
@@ -449,8 +455,31 @@ def clear_download_state_pais():
 # --- ENTRADAS PRINCIPAIS ---
 st.header("1. Configurações da Análise")
 
-lista_de_paises = obter_lista_de_paises()
-lista_de_blocos = obter_lista_de_blocos()
+# --- LÓGICA DE CARREGAMENTO DAS LISTAS ---
+try:
+    lista_de_paises = obter_lista_de_paises()
+    lista_de_blocos = obter_lista_de_blocos()
+except Exception as e:
+    st.error(f"Erro crítico ao carregar listas iniciais de países/blocos: {e}")
+    # Define listas vazias para evitar que o app quebre
+    lista_de_paises = ["Falha ao carregar países"]
+    lista_de_blocos = ["Falha ao carregar blocos"]
+
+# --- CORREÇÃO APLICADA: Lógica de 'default' resiliente ---
+# Isso evita o erro 'StreamlitAPIException' se a lista de países falhar
+valores_padrao = ["China", "Estados Unidos"]
+valores_padrao_filtrados = [pais for pais in valores_padrao if pais in lista_de_paises]
+
+if not valores_padrao_filtrados and len(lista_de_paises) > 0 and "Erro" not in lista_de_paises[0]:
+    # Se os padrões não existem, mas a lista sim, pega o primeiro país
+    valores_padrao_filtrados = [lista_de_paises[0]]
+elif "Erro" in lista_de_paises[0] or "Falha" in lista_de_paises[0]:
+    # Se a lista de países falhou em carregar, o default DEVE ser uma lista vazia
+    valores_padrao_filtrados = [] 
+    st.warning("Não foi possível carregar a lista de países. O site de dados pode estar fora do ar. A seleção manual de países pode não funcionar.")
+# --- FIM DA CORREÇÃO ---
+
+
 ano_atual = datetime.now().year
 
 col1, col2 = st.columns(2)
@@ -479,10 +508,9 @@ with col1:
     )
 
 with col2:
-    # --- ALTERAÇÃO AQUI: Filtros separados ---
     blocos_selecionados = st.multiselect(
-        "Filtrar por Bloco(s) Econômico(s) (opcional):",
-        options=[b for b in lista_de_blocos if b != "Nenhum / Seleção Manual"], # Remove a opção "Nenhum"
+        "Filtrar por Bloco(s) (opcional):",
+        options=lista_de_blocos, # Agora populado por NO_BLOCO_GR
         help="Os países destes blocos serão adicionados à seleção.",
         on_change=clear_download_state_pais
     )
@@ -490,11 +518,10 @@ with col2:
     paises_selecionados_manual = st.multiselect(
         "Filtrar por País(es) (opcional):",
         options=lista_de_paises,
-        default=["China", "Estados Unidos"],
+        default=valores_padrao_filtrados, # Usa a lista filtrada e segura
         help="Você pode digitar para pesquisar e selecionar múltiplos países.",
         on_change=clear_download_state_pais
     )
-    # --- FIM DA ALTERAÇÃO ---
 
 
 # --- LÓGICA CONDICIONAL PARA ENTRADAS ---
@@ -515,10 +542,10 @@ paises = sorted(list(set(paises_selecionados_manual + paises_do_bloco)))
 if len(paises) > 1:
     st.header("2. Opções de Agrupamento")
     
-    # Se um bloco foi selecionado, força o agrupamento e usa o nome do bloco
+    # Se um bloco foi selecionado E nenhum país manual, força o agrupamento
     if blocos_selecionados and not paises_selecionados_manual:
         agrupado = True
-        st.info(f"Análise de Bloco Econômico será agrupada.")
+        st.info(f"Análise de Bloco será agrupada.")
         nome_agrupamento = ", ".join(blocos_selecionados)
     else:
         agrupamento_input = st.radio(
@@ -584,15 +611,15 @@ if st.button(" Iniciar Geração do Relatório"):
             df_uf_mun = carregar_dataframe(url_uf_mun, "UF_MUN.csv", usecols=['CO_MUN_GEO', 'NO_MUN_MIN'], mostrar_progresso=False)
             
             if df_ncm is None or df_uf_mun is None:
-                st.error("Não foi possível carregar tabelas auxiliares. Abortando.")
+                st.error("Não foi possível carregar tabelas auxiliares (NCM ou Municípios). Abortando.")
                 st.stop()
-
+            
             # --- 2. Bloco de Exportação ---
             df_exp_ano = carregar_dataframe(url_exp_ano_principal, f"EXP_{ano_principal}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
             df_exp_ano_anterior = carregar_dataframe(url_exp_ano_comparacao, f"EXP_{ano_comparacao}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
 
             if df_exp_ano is None or df_exp_ano_anterior is None:
-                st.error("Não foi possível carregar dados de exportação. Abortando.")
+                st.error("Não foi possível carregar dados de exportação. Verifique os anos selecionados ou tente novamente mais tarde.")
                 st.stop()
 
             # --- Lógica de Meses ---
@@ -730,7 +757,11 @@ if st.button(" Iniciar Geração do Relatório"):
                     texto_municipios_exportacao = f"Dentre os {len(exportacoes_por_municipio)} municípios de Minas Gerais que exportaram produtos para {nome_relatorio} em {nome_periodo}, os principais foram: "
                     texto_municipios_exportacao_lista = []
                     for i, (codigo_municipio, valor_fob) in enumerate(exportacoes_por_municipio.head(5).items()):
-                        nome_municipio = df_uf_mun[df_uf_mun['CO_MUN_GEO'] == codigo_municipio]['NO_MUN_MIN'].iloc[0]
+                        try:
+                            # CORREÇÃO: Converter 'codigo_municipio' (str) para int para bater com 'CO_MUN_GEO' (int)
+                            nome_municipio = df_uf_mun[df_uf_mun['CO_MUN_GEO'] == int(codigo_municipio)]['NO_MUN_MIN'].iloc[0]
+                        except:
+                            nome_municipio = f"Município ({codigo_municipio})"
                         participacao_municipio_exportacao = calcular_participacao(valor_fob, exportacao_pais_ano)
                         texto_municipios_exportacao_lista.append(f"{nome_municipio} ({participacao_municipio_exportacao}%)")
                     texto_municipios_exportacao += "; ".join(texto_municipios_exportacao_lista) + "."
@@ -749,7 +780,11 @@ if st.button(" Iniciar Geração do Relatório"):
                     texto_municipios_importacao = f"Dentre os {len(importacoes_por_municipio)} municípios de Minas Gerais que importaram produtos {nome_relatorio} em {nome_periodo}, os principais foram: "
                     texto_municipios_importacao_lista = []
                     for i, (codigo_municipio, valor_fob) in enumerate(importacoes_por_municipio.head(5).items()):
-                        nome_municipio = df_uf_mun[df_uf_mun['CO_MUN_GEO'] == codigo_municipio]['NO_MUN_MIN'].iloc[0]
+                        try:
+                            # CORREÇÃO: Converter 'codigo_municipio' (str) para int
+                            nome_municipio = df_uf_mun[df_uf_mun['CO_MUN_GEO'] == int(codigo_municipio)]['NO_MUN_MIN'].iloc[0]
+                        except:
+                            nome_municipio = f"Município ({codigo_municipio})"
                         participacao_municipio_importacao = calcular_participacao(valor_fob, importacao_pais_ano) 
                         texto_municipios_importacao_lista.append(f"{nome_municipio} ({participacao_municipio_importacao}%)")
                     texto_municipios_importacao += "; ".join(texto_municipios_importacao_lista) + "."
@@ -918,7 +953,11 @@ if st.button(" Iniciar Geração do Relatório"):
                         texto_municipios_exportacao = f"Dentre os {len(exportacoes_por_municipio)} municípios de Minas Gerais que exportaram produtos para {nome_relatorio} em {nome_periodo_em}, os principais foram: "
                         texto_municipios_exportacao_lista = []
                         for i, (codigo_municipio, valor_fob) in enumerate(exportacoes_por_municipio.head(5).items()):
-                            nome_municipio = df_uf_mun[df_uf_mun['CO_MUN_GEO'] == codigo_municipio]['NO_MUN_MIN'].iloc[0]
+                            try:
+                                # CORREÇÃO: Converter 'codigo_municipio' (str) para int
+                                nome_municipio = df_uf_mun[df_uf_mun['CO_MUN_GEO'] == int(codigo_municipio)]['NO_MUN_MIN'].iloc[0]
+                            except:
+                                nome_municipio = f"Município ({codigo_municipio})"
                             participacao_municipio_exportacao = calcular_participacao(valor_fob, exportacao_pais_ano) 
                             texto_municipios_exportacao_lista.append(f"{nome_municipio} ({participacao_municipio_exportacao}%)")
                         texto_municipios_exportacao += "; ".join(texto_municipios_exportacao_lista) + "."
@@ -942,7 +981,11 @@ if st.button(" Iniciar Geração do Relatório"):
                         texto_municipios_importacao = f"Dentre os {len(importacoes_por_municipio)} municípios de Minas Gerais que importaram produtos {nome_relatorio_com_contracao} em {nome_periodo_em}, os principais foram: "
                         texto_municipios_importacao_lista = []
                         for i, (codigo_municipio, valor_fob) in enumerate(importacoes_por_municipio.head(5).items()):
-                            nome_municipio = df_uf_mun[df_uf_mun['CO_MUN_GEO'] == codigo_municipio]['NO_MUN_MIN'].iloc[0]
+                            try:
+                                # CORREÇÃO: Converter 'codigo_municipio' (str) para int
+                                nome_municipio = df_uf_mun[df_uf_mun['CO_MUN_GEO'] == int(codigo_municipio)]['NO_MUN_MIN'].iloc[0]
+                            except:
+                                nome_municipio = f"Município ({codigo_municipio})"
                             participacao_municipio_importacao = calcular_participacao(valor_fob, importacao_pais_ano) 
                             texto_municipios_importacao_lista.append(f"{nome_municipio} ({participacao_municipio_importacao}%)")
                         texto_municipios_importacao += "; ".join(texto_municipios_importacao_lista) + "."
