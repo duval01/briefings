@@ -97,10 +97,10 @@ def carregar_dataframe(url, nome_arquivo, usecols=None, dtypes=None, mostrar_pro
 
 @st.cache_data
 def obter_dados_paises():
-    # --- ALTERAÇÃO AQUI: Carrega NO_BLOCO ---
+    # --- CORREÇÃO AQUI: 'NO_BLOCO' -> 'NO_BLOCO_POR' ---
     url_pais = "https://balanca.economia.gov.br/balanca/bd/tabelas/PAIS.csv"
-    df_pais = carregar_dataframe(url_pais, "PAIS.csv", usecols=['NO_PAIS', 'CO_PAIS', 'NO_BLOCO'], mostrar_progresso=False) 
-    # --- FIM DA ALTERAÇÃO ---
+    df_pais = carregar_dataframe(url_pais, "PAIS.csv", usecols=['NO_PAIS', 'CO_PAIS', 'NO_BLOCO_POR'], mostrar_progresso=False) 
+    # --- FIM DA CORREÇÃO ---
     if df_pais is not None and not df_pais.empty:
         return df_pais
     return None
@@ -111,7 +111,8 @@ def obter_lista_de_blocos():
     """Retorna uma lista de nomes de blocos econômicos válidos."""
     df_pais = obter_dados_paises()
     if df_pais is not None:
-        blocos = df_pais['NO_BLOCO'].dropna().unique().tolist()
+        # --- CORREÇÃO AQUI: 'NO_BLOCO' -> 'NO_BLOCO_POR' ---
+        blocos = df_pais['NO_BLOCO_POR'].dropna().unique().tolist()
         blocos.sort()
         # Adiciona a opção manual no início
         return ["Nenhum / Seleção Manual"] + blocos
@@ -122,8 +123,9 @@ def obter_paises_do_bloco(nome_bloco):
     """Retorna uma lista de nomes de países para um bloco específico."""
     df_pais = obter_dados_paises()
     if df_pais is not None:
+        # --- CORREÇÃO AQUI: 'NO_BLOCO' -> 'NO_BLOCO_POR' ---
         df_bloco = df_pais[
-            (df_pais['NO_BLOCO'] == nome_bloco) & 
+            (df_pais['NO_BLOCO_POR'] == nome_bloco) & 
             (df_pais['NO_PAIS'] != "Brasil")
         ]
         return df_bloco['NO_PAIS'].tolist()
@@ -443,9 +445,7 @@ def clear_download_state_pais():
 st.header("1. Configurações da Análise")
 
 lista_de_paises = obter_lista_de_paises()
-# --- ALTERAÇÃO AQUI: Carrega lista de blocos ---
 lista_de_blocos = obter_lista_de_blocos()
-# --- FIM DA ALTERAÇÃO ---
 ano_atual = datetime.now().year
 
 col1, col2 = st.columns(2)
@@ -474,7 +474,6 @@ with col1:
     )
 
 with col2:
-    # --- ALTERAÇÃO AQUI: Novo filtro de Bloco ---
     bloco_selecionado = st.selectbox(
         "Filtrar por Bloco Econômico (opcional):",
         options=lista_de_blocos,
@@ -498,14 +497,12 @@ with col2:
         help="Você pode digitar para pesquisar e selecionar múltiplos países.",
         on_change=clear_download_state_pais
     )
-    # --- FIM DA ALTERAÇÃO ---
 
 
 # --- LÓGICA CONDICIONAL PARA ENTRADAS ---
 agrupado = True 
 nome_agrupamento = None
 
-# --- ALTERAÇÃO AQUI: Lógica de agrupamento modificada para blocos ---
 if bloco_selecionado != "Nenhum / Seleção Manual":
     agrupado = True
     nome_agrupamento = bloco_selecionado
@@ -537,7 +534,6 @@ elif len(paises) > 1:
 else:
     agrupado = False 
     st.header("2. Gerar Relatório")
-# --- FIM DA ALTERAÇÃO ---
 
 
 # --- EXECUÇÃO DO SCRIPT ---
@@ -936,7 +932,7 @@ if st.button(" Iniciar Geração do Relatório"):
                         for i, (codigo_municipio, valor_fob) in enumerate(importacoes_por_municipio.head(5).items()):
                             nome_municipio = df_uf_mun[df_uf_mun['CO_MUN_GEO'] == codigo_municipio]['NO_MUN_MIN'].iloc[0]
                             participacao_municipio_importacao = calcular_participacao(valor_fob, importacao_pais_ano) 
-                            texto_municipios_importacao_lista.append(f"{nome_municipio} ({participacao_municipio_exportacao}%)")
+                            texto_municipios_importacao_lista.append(f"{nome_municipio} ({participacao_municipio_importacao}%)")
                         texto_municipios_importacao += "; ".join(texto_municipios_importacao_lista) + "."
                     else: 
                         texto_importacao = f"Em {nome_periodo}, Minas Gerais não registrou importações provenientes {nome_relatorio_com_contracao}."
