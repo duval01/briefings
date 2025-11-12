@@ -8,7 +8,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Logo da Sidebar (colocada aqui, ela fica ACIMA da navegação)
+# 2. Logo da Sidebar (colocada aqui, ela fica ACIMA da navegação e em TODAS as páginas)
 logo_sidebar_path = "LogoMinasGerais.png"
 if os.path.exists(logo_sidebar_path):
     st.sidebar.image(logo_sidebar_path, width=200)
