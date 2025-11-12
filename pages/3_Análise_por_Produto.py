@@ -91,8 +91,8 @@ def obter_dados_paises():
 def obter_dados_produtos_ncm():
     """Carrega a tabela NCM completa (SH2, SH4 e SH6) e armazena em cache."""
     url_ncm = "https://balanca.economia.gov.br/balanca/bd/tabelas/NCM_SH.csv"
-    # --- ALTERADO: Adicionado CO_NCM_SH6 e NO_NCM_SH6_POR ---
-    usecols_ncm = ['CO_SH2', 'NO_SH2_POR', 'CO_SH4', 'NO_SH4_POR', 'CO_NCM_SH6', 'NO_SH6_POR']
+    # --- CORREÇÃO APLICADA: Usa CO_SH6 e NO_SH6_POR ---
+    usecols_ncm = ['CO_SH2', 'NO_SH2_POR', 'CO_SH4', 'NO_SH4_POR', 'CO_SH6', 'NO_SH6_POR']
     df_ncm = carregar_dataframe(url_ncm, "NCM_SH.csv", usecols=usecols_ncm, mostrar_progresso=False)
     if df_ncm is not None:
         return df_ncm
@@ -135,20 +135,22 @@ def obter_lista_de_produtos_sh6(codigos_sh4_selecionados):
     if df_ncm is None:
         return ["Erro ao carregar lista de SH6"]
 
-    df_sh6 = df_ncm.drop_duplicates(subset=['NO_SH6_POR']).dropna(subset=['CO_NCM_SH6', 'NO_SH6_POR'])
+    # --- CORREÇÃO APLICADA: Usa CO_SH6 e NO_SH6_POR ---
+    df_sh6 = df_ncm.drop_duplicates(subset=['CO_SH6']).dropna(subset=['CO_SH6', 'NO_SH6_POR'])
 
     # Filtra por SH4 se algum for selecionado
     if codigos_sh4_selecionados:
         codigos_sh4_str = [str(c).zfill(4) for c in codigos_sh4_selecionados]
         # Adiciona lógica para mapear SH4 -> SH6
-        df_sh6['CO_SH4_TEMP'] = df_sh6['NO_SH6_POR'].astype(str).str.zfill(6).str[:4]
+        # CORREÇÃO AQUI:
+        df_sh6['CO_SH4_TEMP'] = df_sh6['CO_SH6'].astype(str).str.zfill(6).str[:4]
         df_sh6 = df_sh6[df_sh6['CO_SH4_TEMP'].isin(codigos_sh4_str)]
 
-    df_sh6['Display'] = df_sh6['NO_SH6_POR'].astype(str).str.zfill(6) + " - " + df_sh6['NO_SH6_POR']
+    # --- CORREÇÃO APLICADA: Usa CO_SH6 e NO_SH6_POR ---
+    df_sh6['Display'] = df_sh6['CO_SH6'].astype(str).str.zfill(6) + " - " + df_sh6['NO_SH6_POR']
     lista_produtos = df_sh6['Display'].unique().tolist()
     lista_produtos.sort()
     return lista_produtos
-# --- FIM NOVO ---
 
 
 def get_sh4(co_ncm):
