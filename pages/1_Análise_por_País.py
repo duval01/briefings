@@ -103,9 +103,9 @@ def carregar_dataframe(url, nome_arquivo, usecols=None, dtypes=None, mostrar_pro
 
 @st.cache_data
 def obter_dados_paises():
-    # --- CORREÇÃO AQUI: 'NO_BLOCO_POR' -> 'NO_BLOCO' ---
+    # --- CORREÇÃO AQUI: 'NO_BLOCO' -> 'NO_BLOCO_POR' ---
     url_pais = "https://balanca.economia.gov.br/balanca/bd/tabelas/PAIS.csv"
-    df_pais = carregar_dataframe(url_pais, "PAIS.csv", usecols=['NO_PAIS', 'CO_PAIS', 'NO_BLOCO'], mostrar_progresso=False) 
+    df_pais = carregar_dataframe(url_pais, "PAIS.csv", usecols=['NO_PAIS', 'CO_PAIS', 'NO_BLOCO_POR'], mostrar_progresso=False) 
     # --- FIM DA CORREÇÃO ---
     if df_pais is not None and not df_pais.empty:
         return df_pais
@@ -117,21 +117,20 @@ def obter_lista_de_blocos():
     """Retorna uma lista de nomes de blocos econômicos válidos."""
     df_pais = obter_dados_paises()
     if df_pais is not None:
-        # --- CORREÇÃO AQUI: 'NO_BLOCO_POR' -> 'NO_BLOCO' ---
-        blocos = df_pais['NO_BLOCO'].dropna().unique().tolist()
+        # --- CORREÇÃO AQUI: 'NO_BLOCO' -> 'NO_BLOCO_POR' ---
+        blocos = df_pais['NO_BLOCO_POR'].dropna().unique().tolist()
         blocos.sort()
-        # Adiciona a opção manual no início
-        return ["Nenhum / Seleção Manual"] + blocos
-    return ["Nenhum / Seleção Manual"]
+        return blocos
+    return []
 
 @st.cache_data
 def obter_paises_do_bloco(nome_bloco):
     """Retorna uma lista de nomes de países para um bloco específico."""
     df_pais = obter_dados_paises()
     if df_pais is not None:
-        # --- CORREÇÃO AQUI: 'NO_BLOCO_POR' -> 'NO_BLOCO' ---
+        # --- CORREÇÃO AQUI: 'NO_BLOCO' -> 'NO_BLOCO_POR' ---
         df_bloco = df_pais[
-            (df_pais['NO_BLOCO'] == nome_bloco) & 
+            (df_pais['NO_BLOCO_POR'] == nome_bloco) & 
             (df_pais['NO_PAIS'] != "Brasil")
         ]
         return df_bloco['NO_PAIS'].tolist()
@@ -480,10 +479,10 @@ with col1:
     )
 
 with col2:
-    # --- ALTERAÇÃO AQUI: Lógica de filtros separados ---
+    # --- ALTERAÇÃO AQUI: Filtros separados ---
     blocos_selecionados = st.multiselect(
         "Filtrar por Bloco(s) Econômico(s) (opcional):",
-        options=[b for b in lista_de_blocos if b != "Nenhum / Seleção Manual"], # Remove a opção manual daqui
+        options=[b for b in lista_de_blocos if b != "Nenhum / Seleção Manual"], # Remove a opção "Nenhum"
         help="Os países destes blocos serão adicionados à seleção.",
         on_change=clear_download_state_pais
     )
@@ -516,10 +515,10 @@ paises = sorted(list(set(paises_selecionados_manual + paises_do_bloco)))
 if len(paises) > 1:
     st.header("2. Opções de Agrupamento")
     
-    # Se um bloco foi selecionado, força o agrupamento
-    if blocos_selecionados:
+    # Se um bloco foi selecionado, força o agrupamento e usa o nome do bloco
+    if blocos_selecionados and not paises_selecionados_manual:
         agrupado = True
-        st.info(f"Análise de Bloco Econômico será sempre agrupada.")
+        st.info(f"Análise de Bloco Econômico será agrupada.")
         nome_agrupamento = ", ".join(blocos_selecionados)
     else:
         agrupamento_input = st.radio(
