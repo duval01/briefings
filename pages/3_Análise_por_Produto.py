@@ -317,10 +317,7 @@ class DocumentoApp:
 
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.sidebar.empty()
-logo_sidebar_path = "LogoMinasGerais.png"
-if os.path.exists(logo_sidebar_path):
-    st.sidebar.image(logo_sidebar_path, width=200)
+# st.sidebar.empty() # Removido
 
 st.header("1. Configurações da Análise de Produto (NCM)")
 
@@ -389,7 +386,6 @@ if len(produtos_selecionados) > 1:
     )
     agrupado = (agrupamento_input == "agrupados")
     
-    # --- ALTERAÇÃO AQUI: Adiciona caixa de nome ---
     if agrupado:
         quer_nome_agrupamento = st.checkbox(
             "Deseja dar um nome para este agrupamento de produtos?", 
@@ -402,10 +398,10 @@ if len(produtos_selecionados) > 1:
                 key="prod_nome_input",
                 on_change=clear_download_state_prod
             )
-    # --- FIM DA ALTERAÇÃO ---
     
     st.header("3. Gerar Análise")
 else:
+    agrupado = False # Se for só 1 produto, a lógica é sempre "separado"
     st.header("2. Gerar Análise")
 
 # --- Inicialização do Session State ---
@@ -463,7 +459,7 @@ if st.button("Iniciar Análise por Produto"):
                 produtos_para_processar = produtos_selecionados
             else:
                 # Se agrupado, usa o nome do agrupamento ou um nome genérico
-                nome_grupo = nome_agrupamento if nome_agrupamento else ", ".join([p.split(' - ')[1] for p in produtos_selecionados])
+                nome_grupo = nome_agrupamento if (nome_agrupamento and nome_agrupamento.strip() != "") else ", ".join([p.split(' - ')[1] for p in produtos_selecionados])
                 produtos_para_processar = [nome_grupo]
 
             for produto_nome_completo in produtos_para_processar:
