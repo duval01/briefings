@@ -135,16 +135,16 @@ def obter_lista_de_produtos_sh6(codigos_sh4_selecionados):
     if df_ncm is None:
         return ["Erro ao carregar lista de SH6"]
 
-    df_sh6 = df_ncm.drop_duplicates(subset=['CO_NCM_SH6']).dropna(subset=['CO_NCM_SH6', 'NO_SH6_POR'])
+    df_sh6 = df_ncm.drop_duplicates(subset=['NO_SH6_POR']).dropna(subset=['CO_NCM_SH6', 'NO_SH6_POR'])
 
     # Filtra por SH4 se algum for selecionado
     if codigos_sh4_selecionados:
         codigos_sh4_str = [str(c).zfill(4) for c in codigos_sh4_selecionados]
         # Adiciona lógica para mapear SH4 -> SH6
-        df_sh6['CO_SH4_TEMP'] = df_sh6['CO_NCM_SH6'].astype(str).str.zfill(6).str[:4]
+        df_sh6['CO_SH4_TEMP'] = df_sh6['NO_SH6_POR'].astype(str).str.zfill(6).str[:4]
         df_sh6 = df_sh6[df_sh6['CO_SH4_TEMP'].isin(codigos_sh4_str)]
 
-    df_sh6['Display'] = df_sh6['CO_NCM_SH6'].astype(str).str.zfill(6) + " - " + df_sh6['NO_SH6_POR']
+    df_sh6['Display'] = df_sh6['NO_SH6_POR'].astype(str).str.zfill(6) + " - " + df_sh6['NO_SH6_POR']
     lista_produtos = df_sh6['Display'].unique().tolist()
     lista_produtos.sort()
     return lista_produtos
