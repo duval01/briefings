@@ -16,7 +16,7 @@ import io
 import zipfile
 
 # --- CONFIGURAÇÕES GLOBAIS E CONSTANTES ---
-
+# ... (todo o bloco de funções de 'requests' até 'sanitize_filename' permanece igual) ...
 requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
 
 estados_brasileiros = {'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR',
@@ -47,29 +47,21 @@ ARTIGOS_PAISES_MAP = {
     "Venezuela": "a", "Vietnã": "o"
 }
 
-# --- LISTAS DE COLUNAS PARA OTIMIZAÇÃO ---
 NCM_COLS = ['VL_FOB', 'CO_PAIS', 'CO_MES', 'SG_UF_NCM', 'CO_NCM']
 NCM_DTYPES = {'CO_NCM': str, 'CO_SH4': str} 
-
 MUN_COLS = ['VL_FOB', 'CO_PAIS', 'CO_MES', 'SG_UF_MUN', 'CO_MUN']
 MUN_DTYPES = {'CO_MUN': str}
 
-
-# --- FUNÇÕES DE LÓGICA (OTIMIZADAS) ---
-
 @st.cache_data(ttl=3600)
 def ler_dados_csv_online(url, usecols=None, dtypes=None):
-    """Lê dados CSV da URL com retentativas e colunas/dtypes específicos."""
     retries = 3
     for attempt in range(retries):
         try:
             resposta = requests.get(url, verify=False, timeout=(10, 1200)) 
             resposta.raise_for_status()
-            
             final_dtypes = {'CO_SH4': str, 'CO_NCM': str}
             if dtypes:
                 final_dtypes.update(dtypes)
-
             df = pd.read_csv(StringIO(resposta.content.decode('latin-1')), encoding='latin-1',
                              sep=';', 
                              dtype=final_dtypes,
@@ -93,7 +85,6 @@ def ler_dados_csv_online(url, usecols=None, dtypes=None):
 
 @st.cache_data(ttl=3600)
 def carregar_dataframe(url, nome_arquivo, usecols=None, dtypes=None, mostrar_progresso=True):
-    """Carrega o DataFrame da URL (usa cache) com colunas e dtypes."""
     progress_bar = None
     if mostrar_progresso: 
         progress_bar = st.progress(0, text=f"Carregando {nome_arquivo}...")
@@ -109,7 +100,6 @@ def carregar_dataframe(url, nome_arquivo, usecols=None, dtypes=None, mostrar_pro
 
 @st.cache_data
 def obter_dados_paises():
-    """Carrega a tabela de países (ID e Nome) e armazena em cache."""
     url_pais = "https://balanca.economia.gov.br/balanca/bd/tabelas/PAIS.csv"
     df_pais = carregar_dataframe(url_pais, "PAIS.csv", usecols=['NO_PAIS', 'CO_PAIS'], mostrar_progresso=False) 
     if df_pais is not None and not df_pais.empty:
@@ -117,7 +107,6 @@ def obter_dados_paises():
     return None
 
 def obter_lista_de_paises():
-    """Retorna uma lista de nomes de países válidos."""
     df_pais = obter_dados_paises() 
     if df_pais is not None:
         lista_paises = df_pais[df_pais['NO_PAIS'] != "Brasil"]['NO_PAIS'].unique().tolist()
@@ -126,7 +115,6 @@ def obter_lista_de_paises():
     return ["Erro ao carregar lista de países"] 
 
 def obter_codigo_pais(nome_pais):
-    """Obtém o código do país a partir do nome, usando o DF cacheado."""
     df_pais = obter_dados_paises()
     if df_pais is not None:
         filtro_pais = df_pais[df_pais['NO_PAIS'] == nome_pais]
@@ -135,41 +123,32 @@ def obter_codigo_pais(nome_pais):
     return None
 
 def validar_paises(paises_selecionados):
-    """Valida a lista de países e retorna códigos e nomes válidos."""
     df_pais = obter_dados_paises() 
     if df_pais is None:
         st.error("Falha ao carregar dados dos países.")
         return [], [], []
-
     codigos_paises = []
     nomes_paises_validos = []
     paises_invalidos = []
-
     mapa_paises = pd.Series(df_pais.CO_PAIS.values, index=df_pais.NO_PAIS).to_dict()
-
     for pais in paises_selecionados:
         if pais.lower() == "brasil":
             paises_invalidos.append(f"{pais} (Não é possível fazer busca no Brasil)")
             continue
-        
         codigo_pais = mapa_paises.get(pais) 
-        
         if codigo_pais is None:
             paises_invalidos.append(f"{pais} (País não encontrado)")
         else:
             codigos_paises.append(codigo_pais)
             nomes_paises_validos.append(pais)
-
     return codigos_paises, nomes_paises_validos, paises_invalidos
 
 def filtrar_dados_por_estado_e_mes(df, estados, meses_para_filtrar):
-    """Filtra o DataFrame por estado e pelos meses selecionados."""
     df_filtrado = df[df['SG_UF_NCM'].isin(list(estados))]
     df_filtrado = df_filtrado[df_filtrado['CO_MES'].isin(meses_para_filtrar)]
     return df_filtrado
 
 def filtrar_dados_por_mg_e_pais(df, codigos_paises, agrupado, meses_para_filtrar):
-    """Filtra o DataFrame por MG, país(es) e meses."""
     df_filtrado = df[df['SG_UF_NCM'] == 'MG']
     if agrupado:
         df_filtrado = df_filtrado[df_filtrado['CO_PAIS'].isin(codigos_paises)]
@@ -179,7 +158,6 @@ def filtrar_dados_por_mg_e_pais(df, codigos_paises, agrupado, meses_para_filtrar
     return df_filtrado
 
 def calcular_soma_por_estado(df, df_anterior=None):
-    """Calcula a soma dos valores por estado para os DFs já filtrados por mês."""
     soma_ano = df.groupby('SG_UF_NCM')['VL_FOB'].sum()
     if df_anterior is not None:
         soma_ano_anterior = df_anterior.groupby('SG_UF_NCM')['VL_FOB'].sum()
@@ -188,35 +166,28 @@ def calcular_soma_por_estado(df, df_anterior=None):
         return soma_ano
 
 def calcular_classificacao_estados(soma_ano, soma_ano_anterior, ano_principal, ano_comparacao):
-    """Calcula a classificação dos estados por valor total."""
     classificacao = pd.concat([soma_ano, soma_ano_anterior], axis=1, keys=[str(ano_principal), str(ano_comparacao)]).sort_values(
         by=str(ano_principal), ascending=False)
     return classificacao
 
 def calcular_posicao_mg(classificacao):
-    """Calcula a posição de MG na classificação."""
     posicao_mg = classificacao.index.get_loc('MG') + 1
     return posicao_mg
 
 def calcular_ranking_por_pais(df):
-    """Calcula a posição do país no ranking de MG (DF já filtrado)."""
     ranking = df.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False)
     return ranking
 
 def calcular_participacao(valor_parcial, valor_total):
-    """Calcula a participação percentual."""
     if valor_total == 0:
         return 0.0
     participacao = round(valor_parcial / valor_total * 100, 2)
     return participacao
 
 def calcular_diferenca_percentual(valor_atual, valor_anterior):
-    """Calcula a diferença percentual entre dois valores (já filtrados por período)."""
     if valor_anterior == 0:
         return 0.0, "acréscimo" if valor_atual > 0 else "redução" if valor_atual < 0 else "estabilidade"
-    
     diferenca = round(((valor_atual - valor_anterior) / valor_anterior) * 100, 2)
-    
     if diferenca > 0:
         tipo_diferenca = "um acréscimo"
     elif diferenca < 0:
@@ -227,23 +198,17 @@ def calcular_diferenca_percentual(valor_atual, valor_anterior):
     return diferenca, tipo_diferenca
 
 def calcular_posicao_estado_pais(df, codigos_paises):
-    """Calcula a posição de MG (DF já filtrado)."""
     df_comercio_pais = df[df['CO_PAIS'].isin(codigos_paises)]
-
     if df_comercio_pais.empty:
         return 0 
-
     ranking_estados_pais = df_comercio_pais.groupby('SG_UF_NCM')['VL_FOB'].sum().sort_values(
         ascending=False)
-
     if 'MG' not in ranking_estados_pais.index:
         return 0 
-
     posicao_mg_pais = ranking_estados_pais.index.get_loc('MG') + 1
     return posicao_mg_pais
 
 def calcular_balanca_e_fluxo(exportacao_ano, importacao_ano, exportacao_ano_anterior, importacao_ano_anterior):
-    """Calcula a balança comercial, o fluxo comercial e suas variações."""
     balanca_ano = exportacao_ano - importacao_ano
     balanca_ano_anterior = exportacao_ano_anterior - importacao_ano_anterior
     fluxo_comercial_ano = exportacao_ano + importacao_ano
@@ -254,35 +219,24 @@ def calcular_balanca_e_fluxo(exportacao_ano, importacao_ano, exportacao_ano_ante
         variacao_balanca = ((balanca_ano - balanca_ano_anterior) / balanca_ano_anterior) * 100
     if fluxo_comercial_ano_anterior != 0:
         variacao_fluxo = ((fluxo_comercial_ano - fluxo_comercial_ano_anterior) / fluxo_comercial_ano_anterior) * 100
-
     return balanca_ano, balanca_ano_anterior, fluxo_comercial_ano, fluxo_comercial_ano_anterior, variacao_balanca, variacao_fluxo
 
 def agregar_dados_por_municipio(df):
-    """Agrupa valores por município (DF já filtrado)."""
     dados_por_municipio = df.groupby('CO_MUN')['VL_FOB'].sum().sort_values(ascending=False)
     total_municipios = dados_por_municipio.sum()
     return dados_por_municipio, total_municipios
 
 def agregar_dados_por_produto(df, df_ncm):
-    """Agrupa produtos e calcula participação (DF já filtrado)."""
     df_filtered = df
-
     def get_sh4(co_ncm):
-        """Extrai SH4 considerando NCMs de 7 e 8 dígitos."""
-        co_ncm_str = str(co_ncm)
-        if pd.isna(co_ncm_str):
+        co_ncm_str = str(co_ncm).strip().zfill(8) # Corrigido para zfill(8)
+        if pd.isna(co_ncm_str) or co_ncm_str == "":
             return None
-        if len(co_ncm_str) == 8:
-            return co_ncm_str[:4]
-        elif len(co_ncm_str) >= 7:
-            return co_ncm_str[:3]
-        else:
-            return None
+        return co_ncm_str[:4]
 
     df_filtered['SH4'] = df_filtered['CO_NCM'].apply(get_sh4).astype(str)
     df_sh4_not_null = df_filtered.dropna(subset=['SH4'])
     produtos = df_sh4_not_null.groupby('SH4')['VL_FOB'].sum().sort_values(ascending=False).head(5)
-
     produtos_nomes = {}
     for sh4_code, valor in produtos.items():
         filtro_ncm = df_ncm[df_ncm['CO_SH4'] == sh4_code]
@@ -291,47 +245,32 @@ def agregar_dados_por_produto(df, df_ncm):
             produtos_nomes[nome_produto] = valor
         else:
             produtos_nomes[f"Produto NCM {sh4_code} não encontrado"] = valor
-
     return produtos_nomes
 
-
-# --- FUNÇÃO DE ARTIGO NATIVA ---
 def obter_artigo_pais(nome_pais):
-    """Busca o artigo de um país em um mapa local."""
-    return ARTIGOS_PAISES_MAP.get(nome_pais) # Retorna o artigo (ex: "o") ou None
-
-
-# --- FUNÇÕES DE FORMATAÇÃO E UTILITÁRIOS ---
+    return ARTIGOS_PAISES_MAP.get(nome_pais) 
 
 def formatar_valor(valor):
     prefixo = ""
     if valor < 0:
         prefixo = "-"
         valor = abs(valor)
-
-    if valor >= 999_500_000:
-        valor_em_bilhoes = round(valor / 1_000_000_000, 2)
-        valor_formatado_str = f"{valor_em_bilhoes:,.2f}"
-        unidade = "bilhão" if valor_em_bilhoes < 2 else "bilhões"
-        resultado = f"US$ {valor_formatado_str} {unidade}"
-    elif valor >= 999_500:
-        valor_em_milhoes = round(valor / 1_000_000, 2)
-        valor_formatado_str = f"{valor_em_milhoes:,.2f}"
-        unidade = "milhão" if valor_em_milhoes < 2 else "milhões"
-        resultado = f"US$ {valor_formatado_str} {unidade}"
-    elif valor >= 1_000:
-        valor_formatado_str = f"{valor / 1_000:,.1f}"
-        resultado = f"US$ {valor_formatado_str} mil"
-    else:
-        resultado = f"US$ {valor:.0f}"
-
-    resultado = resultado.replace(',', 'X').replace('.', ',').replace('X', '.')
-    return f"{prefixo}{resultado}"
+    if valor >= 1_000_000_000:
+        valor_formatado_str = f"{(valor / 1_000_000_000):.2f}".replace('.',',')
+        unidade = "bilhão" if (valor / 1_000_000_000) < 2 else "bilhões"
+        return f"{prefixo}US$ {valor_formatado_str} {unidade}"
+    if valor >= 1_000_000:
+        valor_formatado_str = f"{(valor / 1_000_000):.2f}".replace('.',',')
+        unidade = "milhão" if (valor / 1_000_000) < 2 else "milhões"
+        return f"{prefixo}US$ {valor_formatado_str} {unidade}"
+    if valor >= 1_000:
+        valor_formatado_str = f"{(valor / 1_000):.2f}".replace('.',',')
+        return f"{prefixo}US$ {valor_formatado_str} mil"
+    valor_formatado_str = f"{valor:.2f}".replace('.',',')
+    return f"{prefixo}US$ {valor_formatado_str}"
 
 def sanitize_filename(filename):
     return re.sub(r'[\\/*?:"<>|]', "_", filename)
-
-# --- CLASSE DE DOCUMENTO (Refatorada para aceitar caminhos) ---
 
 class DocumentoApp:
     def __init__(self, logo_path):
@@ -360,15 +299,7 @@ class DocumentoApp:
         run.font.size = Pt(12)
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
 
-    def adicionar_conteudo_central(self, texto):
-        p = self.doc.add_paragraph()
-        run = p.add_run(texto)
-        run.font.name = 'Times New Roman'
-        run.font.size = Pt(12)
-        run.bold = True
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-    def adicionar_paragrafo(self, texto):
+    def adicionar_paragrafo(self, texto): 
         p = self.doc.add_paragraph()
         p.paragraph_format.first_line_indent = Cm(1.25)
         run = p.add_run(texto)
@@ -398,18 +329,15 @@ class DocumentoApp:
         section = self.doc.sections[0]
         section.top_margin = Cm(1.27)
         header = section.header
-        
         largura_total_cm = 16.0
         table = header.add_table(rows=1, cols=2, width=Cm(largura_total_cm))
         table.alignment = WD_ALIGN_PARAGRAPH.CENTER
         table.columns[0].width = Cm(4.0)
         table.columns[1].width = Cm(12.0)
-
         cell_imagem = table.cell(0, 0)
         paragraph_imagem = cell_imagem.paragraphs[0]
         paragraph_imagem.paragraph_format.space_before = Pt(0)
         paragraph_imagem.paragraph_format.space_after = Pt(0)
-        
         run_imagem = paragraph_imagem.add_run()
         if self.logo_path and os.path.exists(self.logo_path):
             try:
@@ -417,13 +345,10 @@ class DocumentoApp:
                                        width=Cm(3.5), 
                                        height=Cm(3.42))
             except Exception as e:
-                # st.error(f"Erro ao adicionar imagem do logo ao Docx: {e}") # Log removido
                 paragraph_imagem.add_run("[Logo não encontrado]")
         else:
             paragraph_imagem.add_run("[Logo não encontrado]")
-
         paragraph_imagem.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
         cell_texto = table.cell(0, 1)
         textos = [
             "GOVERNO DO ESTADO DE MINAS GERAIS",
@@ -431,28 +356,24 @@ class DocumentoApp:
             "Subsecretaria de Promoção de Investimentos e Cadeias Produtivas",
             "Superintendência de Atração de Investimentos e Estímulo à Exportação"
         ]
-        
         def formatar_paragrafo_cabecalho(p):
             p.paragraph_format.space_before = Pt(0)
             p.paragraph_format.space_after = Pt(0)
             p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
             p.paragraph_format.line_spacing = Pt(11)
             p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-
         p = cell_texto.paragraphs[0]
         formatar_paragrafo_cabecalho(p)
         run = p.add_run(textos[0])
         run.font.name = 'Times New Roman'
         run.font.size = Pt(11)
         run.bold = True 
-
         p = cell_texto.add_paragraph()
         formatar_paragrafo_cabecalho(p)
         run = p.add_run(textos[1])
         run.font.name = 'Times New Roman'
         run.font.size = Pt(11)
         run.bold = True
-        
         for texto in textos[2:]: 
             p = cell_texto.add_paragraph()
             formatar_paragrafo_cabecalho(p)
@@ -462,50 +383,42 @@ class DocumentoApp:
             run.bold = False 
 
     def finalizar_documento(self):
-        """Salva o documento em memória e retorna."""
-        
         diretorio_real = self.diretorio_base
         try:
             os.makedirs(diretorio_real, exist_ok=True)
         except Exception:
             diretorio_real = "/tmp/"
             os.makedirs(diretorio_real, exist_ok=True)
-            
         nome_arquivo = f"{self.titulo_doc}.docx"
         nome_arquivo_sanitizado = sanitize_filename(nome_arquivo)
-        caminho_completo = os.path.join(diretorio_real, nome_arquivo_sanitizado)
-
         file_stream = io.BytesIO()
         self.doc.save(file_stream)
         file_stream.seek(0)
-        
         file_bytes = file_stream.getvalue()
         st.success(f"Documento '{nome_arquivo_sanitizado}' gerado com sucesso!")
-        
         try:
-            self.doc.save(caminho_completo)
+            self.doc.save(os.path.join(diretorio_real, nome_arquivo_sanitizado))
         except Exception:
             pass 
-
         return file_bytes, nome_arquivo_sanitizado
-
 
 # --- ----------------------------------- ---
 # --- INTERFACE GRÁFICA DO STREAMLIT (Página 1) ---
 # --- ----------------------------------- ---
 
-# st.set_page_config(page_title="Briefings ComexStat", layout="wide") # Config é feito no app.py principal
-# st.title(" automação de Briefings ComexStat") # Título vem do nome do arquivo
-
 # --- Inicialização do Session State ---
-if 'arquivos_gerados' not in st.session_state:
-    st.session_state.arquivos_gerados = []
+if 'arquivos_gerados_pais' not in st.session_state:
+    st.session_state.arquivos_gerados_pais = []
 
-# --- Limpa a sidebar ---
-st.sidebar.empty()
-logo_sidebar_path = "LogoMinasGerais.png"
-if os.path.exists(logo_sidebar_path):
-    st.sidebar.image(logo_sidebar_path, width=200)
+# --- ALTERAÇÃO AQUI: Remove st.sidebar.empty() ---
+# st.sidebar.empty() # Removido para permitir que o app.py controle a sidebar
+# logo_sidebar_path = "LogoMinasGerais.png"
+# if os.path.exists(logo_sidebar_path):
+#     st.sidebar.image(logo_sidebar_path, width=200)
+
+def clear_download_state_pais():
+    if 'arquivos_gerados_pais' in st.session_state:
+        st.session_state.arquivos_gerados_pais = []
 
 # --- ENTRADAS PRINCIPAIS ---
 st.header("1. Configurações da Análise")
@@ -520,14 +433,16 @@ with col1:
         min_value=1998,
         max_value=ano_atual,
         value=ano_atual,
-        help="O ano principal que você quer analisar."
+        help="O ano principal que você quer analisar.",
+        on_change=clear_download_state_pais
     )
     ano_comparacao = st.number_input(
         "Ano de Comparação:",
         min_value=1998,
         max_value=ano_atual,
         value=ano_atual - 1,
-        help="O ano contra o qual você quer comparar."
+        help="O ano contra o qual você quer comparar.",
+        on_change=clear_download_state_pais
     )
 
 with col2:
@@ -535,16 +450,18 @@ with col2:
         "Selecione o(s) país(es):",
         options=lista_de_paises,
         default=["China", "Estados Unidos"],
-        help="Você pode digitar para pesquisar e selecionar múltiplos países."
+        help="Você pode digitar para pesquisar e selecionar múltiplos países.",
+        on_change=clear_download_state_pais
     )
     meses_selecionados = st.multiselect(
         "Meses de Análise (opcional):",
         options=LISTA_MESES,
-        help="Selecione os meses. Se deixar em branco, o ano inteiro será analisado."
+        help="Selecione os meses. Se deixar em branco, o ano inteiro será analisado.",
+        on_change=clear_download_state_pais
     )
 
 # --- LÓGICA CONDICIONAL PARA ENTRADAS ---
-agrupado = False
+agrupado = True # Padrão é agrupado se houver > 1 país
 nome_agrupamento = None
 
 if len(paises) > 1:
@@ -553,21 +470,33 @@ if len(paises) > 1:
         "Deseja que os dados sejam agrupados ou separados?",
         ("agrupados", "separados"),
         index=0,
-        horizontal=True
+        horizontal=True,
+        on_change=clear_download_state_pais
     )
     agrupado = (agrupamento_input == "agrupados")
 
     if agrupado:
-        quer_nome_agrupamento = st.checkbox("Deseja dar um nome para este agrupamento?")
+        quer_nome_agrupamento = st.checkbox(
+            "Deseja dar um nome para este agrupamento?", 
+            key="pais_nome_grupo",
+            on_change=clear_download_state_pais
+        )
         if quer_nome_agrupamento:
-            nome_agrupamento = st.text_input("Digite o nome do agrupamento:")
+            nome_agrupamento = st.text_input(
+                "Digite o nome do agrupamento:", 
+                key="pais_nome_input",
+                on_change=clear_download_state_pais
+            )
+    st.header("3. Gerar Relatório")
+else:
+    agrupado = False # Se for só 1 país, a lógica é sempre "separado"
+    st.header("2. Gerar Relatório")
+
 
 # --- EXECUÇÃO DO SCRIPT ---
-st.header("3. Gerar Relatório")
-
 if st.button(" Iniciar Geração do Relatório"):
     
-    st.session_state.arquivos_gerados = []
+    st.session_state.arquivos_gerados_pais = []
     
     logo_path_to_use = "LogoMinasGerais.png" 
     if not os.path.exists(logo_path_to_use):
@@ -798,7 +727,7 @@ if st.button(" Iniciar Geração do Relatório"):
                     app.adicionar_conteudo_formatado(texto_municipios_importacao)
                 
                 file_bytes, file_name = app.finalizar_documento() 
-                st.session_state.arquivos_gerados.append({"name": file_name, "data": file_bytes})
+                st.session_state.arquivos_gerados_pais.append({"name": file_name, "data": file_bytes})
 
             else:
                 # --- LÓGICA PARA SEPARADOS ---
@@ -899,7 +828,7 @@ if st.button(" Iniciar Geração do Relatório"):
                     # --- ARTIGO ---
                     nome_relatorio = nome_pais_base
                     nome_relatorio_capitalizado = nome_pais_base
-                    artigo = obter_artigo_pais(nome_pais_base) # <--- Alterado para a função nativa
+                    artigo = obter_artigo_pais(nome_pais_base) 
 
                     if artigo:
                         nome_relatorio = f"{artigo.lower()} {nome_pais_base}"
@@ -967,7 +896,6 @@ if st.button(" Iniciar Geração do Relatório"):
                         texto_municipios_importacao += "; ".join(texto_municipios_importacao_lista) + "."
                     else: 
                         texto_importacao = f"Em {nome_periodo}, Minas Gerais não registrou importações provenientes {nome_relatorio_com_contracao}."
-
                     
                     # --- Montagem do Documento ---
                     app.set_titulo(titulo_documento)
@@ -992,43 +920,40 @@ if st.button(" Iniciar Geração do Relatório"):
                         app.adicionar_conteudo_formatado(texto_municipios_importacao)
                     
                     file_bytes, file_name = app.finalizar_documento()
-                    st.session_state.arquivos_gerados.append({"name": file_name, "data": file_bytes})
+                    st.session_state.arquivos_gerados_pais.append({"name": file_name, "data": file_bytes})
                 
         except Exception as e:
             st.error(f"Ocorreu um erro inesperado durante a geração:")
             st.exception(e)
 
-# --- ----------------------------------- ---
 # --- Bloco de exibição de Download (COM LÓGICA DE ZIP) ---
-# --- ----------------------------------- ---
-
-if st.session_state.arquivos_gerados:
+if st.session_state.arquivos_gerados_pais:
     st.header("4. Relatórios Gerados")
     st.info("Clique para baixar os relatórios. Eles permanecerão aqui até que você gere um novo relatório.")
     
-    if len(st.session_state.arquivos_gerados) > 1:
+    if len(st.session_state.arquivos_gerados_pais) > 1:
         # Caso "Separados": Criar um ZIP
         st.subheader("Pacote de Relatórios (ZIP)")
         
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-            for arquivo in st.session_state.arquivos_gerados:
+            for arquivo in st.session_state.arquivos_gerados_pais:
                 zip_file.writestr(arquivo["name"], arquivo["data"])
         
         zip_bytes = zip_buffer.getvalue()
         
         st.download_button(
-            label=f"Baixar todos os {len(st.session_state.arquivos_gerados)} relatórios (.zip)",
+            label=f"Baixar todos os {len(st.session_state.arquivos_gerados_pais)} relatórios (.zip)",
             data=zip_bytes,
-            file_name=f"Briefings_ComexStat_{ano_principal}.zip",
+            file_name=f"Briefings_Países_{ano_principal}.zip",
             mime="application/zip",
-            key="download_zip"
+            key="download_zip_pais"
         )
         
-    elif len(st.session_state.arquivos_gerados) == 1:
+    elif len(st.session_state.arquivos_gerados_pais) == 1:
         # Caso "Agrupado": Botão único
         st.subheader("Relatório Gerado")
-        arquivo = st.session_state.arquivos_gerados[0] 
+        arquivo = st.session_state.arquivos_gerados_pais[0] 
         st.download_button(
             label=f"Baixar Relatório ({arquivo['name']})",
             data=arquivo["data"], 
@@ -1043,7 +968,6 @@ st.divider()
 col1, col2 = st.columns([0.3, 0.7], vertical_alignment="center") 
 
 with col1:
-    # Coluna 1 (menor) agora contém a logo
     logo_footer_path = "AEST Sede.png"
     if os.path.exists(logo_footer_path):
         st.image(logo_footer_path, width=150)
@@ -1051,5 +975,4 @@ with col1:
         st.caption("Logo AEST não encontrada.")
 
 with col2:
-    # Coluna 2 (maior) agora contém o texto
     st.caption("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
