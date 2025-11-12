@@ -103,9 +103,9 @@ def carregar_dataframe(url, nome_arquivo, usecols=None, dtypes=None, mostrar_pro
 
 @st.cache_data
 def obter_dados_paises():
-    # --- CORREÇÃO AQUI: 'NO_BLOCO' -> 'NO_BLOCO_POR' ---
+    # --- CORREÇÃO APLICADA: O nome correto da coluna é 'NO_BLOCO' ---
     url_pais = "https://balanca.economia.gov.br/balanca/bd/tabelas/PAIS.csv"
-    df_pais = carregar_dataframe(url_pais, "PAIS.csv", usecols=['NO_PAIS', 'CO_PAIS', 'NO_BLOCO_POR'], mostrar_progresso=False) 
+    df_pais = carregar_dataframe(url_pais, "PAIS.csv", usecols=['NO_PAIS', 'CO_PAIS', 'NO_BLOCO'], mostrar_progresso=False) 
     # --- FIM DA CORREÇÃO ---
     if df_pais is not None and not df_pais.empty:
         return df_pais
@@ -117,8 +117,8 @@ def obter_lista_de_blocos():
     """Retorna uma lista de nomes de blocos econômicos válidos."""
     df_pais = obter_dados_paises()
     if df_pais is not None:
-        # --- CORREÇÃO AQUI: 'NO_BLOCO' -> 'NO_BLOCO_POR' ---
-        blocos = df_pais['NO_BLOCO_POR'].dropna().unique().tolist()
+        # --- CORREÇÃO APLICADA: O nome correto da coluna é 'NO_BLOCO' ---
+        blocos = df_pais['NO_BLOCO'].dropna().unique().tolist()
         blocos.sort()
         return blocos
     return []
@@ -128,9 +128,9 @@ def obter_paises_do_bloco(nome_bloco):
     """Retorna uma lista de nomes de países para um bloco específico."""
     df_pais = obter_dados_paises()
     if df_pais is not None:
-        # --- CORREÇÃO AQUI: 'NO_BLOCO' -> 'NO_BLOCO_POR' ---
+        # --- CORREÇÃO APLICADA: O nome correto da coluna é 'NO_BLOCO' ---
         df_bloco = df_pais[
-            (df_pais['NO_BLOCO_POR'] == nome_bloco) & 
+            (df_pais['NO_BLOCO'] == nome_bloco) & 
             (df_pais['NO_PAIS'] != "Brasil")
         ]
         return df_bloco['NO_PAIS'].tolist()
