@@ -14,6 +14,10 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
+logo_sidebar_path = "LogoMinasGerais.png"
+if os.path.exists(logo_sidebar_path):
+    st.sidebar.image(logo_sidebar_path, width=200)
+
 # --- CONFIGURAÇÕES GLOBAIS ---
 requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
 
