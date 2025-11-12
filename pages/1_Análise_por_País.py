@@ -226,7 +226,7 @@ def agregar_dados_por_municipio(df):
 def agregar_dados_por_produto(df, df_ncm):
     df_filtered = df
     def get_sh4(co_ncm):
-        co_ncm_str = str(co_ncm).strip().zfill(8)
+        co_ncm_str = str(co_ncm).strip().zfill(8) # Corrigido para zfill(8)
         if pd.isna(co_ncm_str) or co_ncm_str == "":
             return None
         return co_ncm_str[:4]
@@ -950,3 +950,18 @@ if st.session_state.arquivos_gerados_pais:
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             key=f"download_{arquivo['name']}"
         )
+
+# --- Bloco de Rodapé ---
+st.divider() 
+
+col1, col2 = st.columns([0.3, 0.7], vertical_alignment="center") 
+
+with col1:
+    logo_footer_path = "AEST Sede.png"
+    if os.path.exists(logo_footer_path):
+        st.image(logo_footer_path, width=150)
+    else:
+        st.caption("Logo AEST não encontrada.")
+
+with col2:
+    st.caption("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
