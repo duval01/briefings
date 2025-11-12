@@ -31,7 +31,6 @@ MUN_DTYPES = {'CO_MUN': str}
 
 @st.cache_data(ttl=3600)
 def ler_dados_csv_online(url, usecols=None, dtypes=None):
-    """Lê dados CSV da URL com retentativas."""
     retries = 3
     for attempt in range(retries):
         try:
@@ -55,7 +54,6 @@ def ler_dados_csv_online(url, usecols=None, dtypes=None):
 
 @st.cache_data(ttl=3600)
 def carregar_dataframe(url, nome_arquivo, usecols=None, dtypes=None, mostrar_progresso=True):
-    """Carrega o DataFrame da URL (usa cache) com colunas e dtypes."""
     progress_bar = None
     if mostrar_progresso: 
         progress_bar = st.progress(0, text=f"Carregando {nome_arquivo}...")
@@ -71,17 +69,14 @@ def carregar_dataframe(url, nome_arquivo, usecols=None, dtypes=None, mostrar_pro
 
 @st.cache_data
 def obter_dados_paises():
-    """Carrega a tabela de países (ID e Nome) e armazena em cache."""
     url_pais = "https://balanca.economia.gov.br/balanca/bd/tabelas/PAIS.csv"
     df_pais = carregar_dataframe(url_pais, "PAIS.csv", usecols=['NO_PAIS', 'CO_PAIS'], mostrar_progresso=False) 
     if df_pais is not None and not df_pais.empty:
-        # Cria um mapa de Código -> Nome
         return pd.Series(df_pais.NO_PAIS.values, index=df_pais.CO_PAIS).to_dict()
     return {}
 
 @st.cache_data
 def obter_lista_de_municipios():
-    """Retorna uma lista de nomes de municípios de MG."""
     url_uf_mun = "https://balanca.economia.gov.br/balanca/bd/tabelas/UF_MUN.csv"
     df_mun = carregar_dataframe(url_uf_mun, "UF_MUN.csv", usecols=['SG_UF', 'NO_MUN', 'CO_MUN_GEO'], mostrar_progresso=False)
     if df_mun is not None:
@@ -92,12 +87,10 @@ def obter_lista_de_municipios():
 
 @st.cache_data
 def obter_mapa_codigos_municipios():
-    """Retorna um mapa de Nome -> Código (CO_MUN_GEO) para municípios de MG."""
     url_uf_mun = "https://balanca.economia.gov.br/balanca/bd/tabelas/UF_MUN.csv"
     df_mun = carregar_dataframe(url_uf_mun, "UF_MUN.csv", usecols=['SG_UF', 'NO_MUN', 'CO_MUN_GEO'], mostrar_progresso=False)
     if df_mun is not None:
         df_mun_mg = df_mun[df_mun['SG_UF'] == 'MG']
-        # Mapeia Nome para CO_MUN_GEO
         return pd.Series(df_mun_mg.CO_MUN_GEO.values, index=df_mun_mg.NO_MUN).to_dict()
     return {}
 
@@ -106,7 +99,6 @@ def formatar_valor(valor):
     if valor < 0:
         prefixo = "-"
         valor = abs(valor)
-
     if valor >= 1_000_000_000:
         valor_formatado_str = f"{(valor / 1_000_000_000):.2f}".replace('.',',')
         unidade = "bilhão" if (valor / 1_000_000_000) < 2 else "bilhões"
@@ -118,21 +110,16 @@ def formatar_valor(valor):
     if valor >= 1_000:
         valor_formatado_str = f"{(valor / 1_000):.2f}".replace('.',',')
         return f"{prefixo}US$ {valor_formatado_str} mil"
-    
     valor_formatado_str = f"{valor:.2f}".replace('.',',')
     return f"{prefixo}US$ {valor_formatado_str}"
 
 def sanitize_filename(filename):
     return re.sub(r'[\\/*?:"<>|]', "_", filename)
 
-# --- FUNÇÃO ADICIONADA ---
 def calcular_diferenca_percentual(valor_atual, valor_anterior):
-    """Calcula a diferença percentual entre dois valores."""
     if valor_anterior == 0:
         return 0.0, "acréscimo" if valor_atual > 0 else "redução" if valor_atual < 0 else "estabilidade"
-    
     diferenca = round(((valor_atual - valor_anterior) / valor_anterior) * 100, 2)
-    
     if diferenca > 0:
         tipo_diferenca = "um acréscimo"
     elif diferenca < 0:
@@ -142,7 +129,6 @@ def calcular_diferenca_percentual(valor_atual, valor_anterior):
     diferenca = abs(diferenca)
     return diferenca, tipo_diferenca
 
-# --- CLASSE DOCUMENTO ADICIONADA ---
 class DocumentoApp:
     def __init__(self, logo_path):
         self.doc = Document()
@@ -151,7 +137,6 @@ class DocumentoApp:
         self.titulo_doc = ""
         self.logo_path = logo_path
         self.diretorio_base = "/tmp/" 
-
     def set_titulo(self, titulo):
         self.titulo_doc = sanitize_filename(titulo)
         self.criar_cabecalho()
@@ -161,7 +146,6 @@ class DocumentoApp:
         run.font.size = Pt(12)
         run.bold = True
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
     def adicionar_conteudo_formatado(self, texto):
         p = self.doc.add_paragraph()
         p.paragraph_format.first_line_indent = Cm(1.25)
@@ -169,7 +153,6 @@ class DocumentoApp:
         run.font.name = 'Times New Roman'
         run.font.size = Pt(12)
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        
     def adicionar_paragrafo(self, texto): 
         p = self.doc.add_paragraph()
         p.paragraph_format.first_line_indent = Cm(1.25)
@@ -177,7 +160,6 @@ class DocumentoApp:
         run.font.name = 'Times New Roman'
         run.font.size = Pt(12)
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-
     def adicionar_titulo(self, texto):
         p = self.doc.add_paragraph()
         if self.subsecao_atual == 0:
@@ -188,27 +170,22 @@ class DocumentoApp:
         run.font.size = Pt(12)
         run.bold = True
         p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-
     def nova_secao(self):
         self.secao_atual += 1
         self.subsecao_atual = 0
-
     def criar_cabecalho(self):
         section = self.doc.sections[0]
         section.top_margin = Cm(1.27)
         header = section.header
-        
         largura_total_cm = 16.0
         table = header.add_table(rows=1, cols=2, width=Cm(largura_total_cm))
         table.alignment = WD_ALIGN_PARAGRAPH.CENTER
         table.columns[0].width = Cm(4.0)
         table.columns[1].width = Cm(12.0)
-
         cell_imagem = table.cell(0, 0)
         paragraph_imagem = cell_imagem.paragraphs[0]
         paragraph_imagem.paragraph_format.space_before = Pt(0)
         paragraph_imagem.paragraph_format.space_after = Pt(0)
-        
         run_imagem = paragraph_imagem.add_run()
         if self.logo_path and os.path.exists(self.logo_path):
             try:
@@ -219,9 +196,7 @@ class DocumentoApp:
                 paragraph_imagem.add_run("[Logo não encontrado]")
         else:
             paragraph_imagem.add_run("[Logo não encontrado]")
-
         paragraph_imagem.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
         cell_texto = table.cell(0, 1)
         textos = [
             "GOVERNO DO ESTADO DE MINAS GERAIS",
@@ -229,28 +204,24 @@ class DocumentoApp:
             "Subsecretaria de Promoção de Investimentos e Cadeias Produtivas",
             "Superintendência de Atração de Investimentos e Estímulo à Exportação"
         ]
-        
         def formatar_paragrafo_cabecalho(p):
             p.paragraph_format.space_before = Pt(0)
             p.paragraph_format.space_after = Pt(0)
             p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
             p.paragraph_format.line_spacing = Pt(11)
             p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-
         p = cell_texto.paragraphs[0]
         formatar_paragrafo_cabecalho(p)
         run = p.add_run(textos[0])
         run.font.name = 'Times New Roman'
         run.font.size = Pt(11)
         run.bold = True 
-
         p = cell_texto.add_paragraph()
         formatar_paragrafo_cabecalho(p)
         run = p.add_run(textos[1])
         run.font.name = 'Times New Roman'
         run.font.size = Pt(11)
         run.bold = True
-        
         for texto in textos[2:]: 
             p = cell_texto.add_paragraph()
             formatar_paragrafo_cabecalho(p)
@@ -258,39 +229,29 @@ class DocumentoApp:
             run.font.name = 'Times New Roman'
             run.font.size = Pt(11)
             run.bold = False 
-
     def finalizar_documento(self):
-        """Salva o documento em memória e retorna."""
-        
         diretorio_real = self.diretorio_base
         try:
             os.makedirs(diretorio_real, exist_ok=True)
         except Exception:
             diretorio_real = "/tmp/"
             os.makedirs(diretorio_real, exist_ok=True)
-            
         nome_arquivo = f"{self.titulo_doc}.docx"
         nome_arquivo_sanitizado = sanitize_filename(nome_arquivo)
-        
         file_stream = io.BytesIO()
         self.doc.save(file_stream)
         file_stream.seek(0)
-        
         file_bytes = file_stream.getvalue()
         st.success(f"Documento '{nome_arquivo_sanitizado}' gerado com sucesso!")
-        
         return file_bytes, nome_arquivo_sanitizado
-# --- FIM DAS FUNÇÕES COPIADAS ---
-
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-# st.sidebar.empty() # Removido, app.py cuida disso
+# st.sidebar.empty() # Removido
 
 st.header("1. Configurações da Análise Municipal")
 st.warning("⚠️ **Aviso de Performance:** Esta análise carrega arquivos de dados muito grandes (mais de 1.5 GB por ano) e **pode falhar** em planos de hospedagem gratuitos com 1GB de RAM (como o Streamlit Cloud).")
 
 def clear_download_state_mun():
-    """Limpa os relatórios gerados da sessão."""
     if 'arquivos_gerados_municipio' in st.session_state:
         st.session_state.arquivos_gerados_municipio = []
 
@@ -309,7 +270,6 @@ with col1:
     municipios_selecionados = st.multiselect(
         "Selecione o(s) município(s):",
         options=lista_de_municipios,
-        # --- CORREÇÃO AQUI: Default com nome correto ---
         default=["BELO HORIZONTE"],
         help="Você pode digitar para pesquisar.",
         on_change=clear_download_state_mun
@@ -568,3 +528,18 @@ if st.session_state.arquivos_gerados_municipio:
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             key=f"download_{arquivo['name']}"
         )
+        
+# --- Bloco de Rodapé ---
+st.divider() 
+
+col1, col2 = st.columns([0.3, 0.7], vertical_alignment="center") 
+
+with col1:
+    logo_footer_path = "AEST Sede.png"
+    if os.path.exists(logo_footer_path):
+        st.image(logo_footer_path, width=150)
+    else:
+        st.caption("Logo AEST não encontrada.")
+
+with col2:
+    st.caption("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
