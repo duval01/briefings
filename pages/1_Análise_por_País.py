@@ -15,10 +15,6 @@ import re
 import io
 import zipfile
 
-logo_sidebar_path = "LogoMinasGerais.png"
-if os.path.exists(logo_sidebar_path):
-    st.sidebar.image(logo_sidebar_path, width=200)
-
 # --- CONFIGURAÇÕES GLOBAIS E CONSTANTES ---
 requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
 estados_brasileiros = {'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR',
@@ -101,11 +97,38 @@ def carregar_dataframe(url, nome_arquivo, usecols=None, dtypes=None, mostrar_pro
 
 @st.cache_data
 def obter_dados_paises():
+    # --- ALTERAÇÃO AQUI: Carrega NO_BLOCO ---
     url_pais = "https://balanca.economia.gov.br/balanca/bd/tabelas/PAIS.csv"
-    df_pais = carregar_dataframe(url_pais, "PAIS.csv", usecols=['NO_PAIS', 'CO_PAIS'], mostrar_progresso=False) 
+    df_pais = carregar_dataframe(url_pais, "PAIS.csv", usecols=['NO_PAIS', 'CO_PAIS', 'NO_BLOCO'], mostrar_progresso=False) 
+    # --- FIM DA ALTERAÇÃO ---
     if df_pais is not None and not df_pais.empty:
         return df_pais
     return None
+
+# --- NOVAS FUNÇÕES DE BLOCO ---
+@st.cache_data
+def obter_lista_de_blocos():
+    """Retorna uma lista de nomes de blocos econômicos válidos."""
+    df_pais = obter_dados_paises()
+    if df_pais is not None:
+        blocos = df_pais['NO_BLOCO'].dropna().unique().tolist()
+        blocos.sort()
+        # Adiciona a opção manual no início
+        return ["Nenhum / Seleção Manual"] + blocos
+    return ["Nenhum / Seleção Manual"]
+
+@st.cache_data
+def obter_paises_do_bloco(nome_bloco):
+    """Retorna uma lista de nomes de países para um bloco específico."""
+    df_pais = obter_dados_paises()
+    if df_pais is not None:
+        df_bloco = df_pais[
+            (df_pais['NO_BLOCO'] == nome_bloco) & 
+            (df_pais['NO_PAIS'] != "Brasil")
+        ]
+        return df_bloco['NO_PAIS'].tolist()
+    return []
+# --- FIM DAS NOVAS FUNÇÕES ---
 
 def obter_lista_de_paises():
     df_pais = obter_dados_paises() 
@@ -230,7 +253,7 @@ def agregar_dados_por_municipio(df):
 def agregar_dados_por_produto(df, df_ncm):
     df_filtered = df
     def get_sh4(co_ncm):
-        co_ncm_str = str(co_ncm).strip().zfill(8) # Corrigido para zfill(8)
+        co_ncm_str = str(co_ncm).strip().zfill(8) 
         if pd.isna(co_ncm_str) or co_ncm_str == "":
             return None
         return co_ncm_str[:4]
@@ -240,7 +263,7 @@ def agregar_dados_por_produto(df, df_ncm):
     produtos = df_sh4_not_null.groupby('SH4')['VL_FOB'].sum().sort_values(ascending=False).head(5)
     produtos_nomes = {}
     for sh4_code, valor in produtos.items():
-        filtro_ncm = df_ncm[df_ncm['CO_SH4'].astype(str).str.zfill(4) == sh4_code] # Compara SH4 com padding
+        filtro_ncm = df_ncm[df_ncm['CO_SH4'].astype(str).str.zfill(4) == sh4_code] 
         if not filtro_ncm.empty:
             nome_produto = filtro_ncm['NO_SH4_POR'].iloc[0]
             produtos_nomes[nome_produto] = valor
@@ -420,6 +443,9 @@ def clear_download_state_pais():
 st.header("1. Configurações da Análise")
 
 lista_de_paises = obter_lista_de_paises()
+# --- ALTERAÇÃO AQUI: Carrega lista de blocos ---
+lista_de_blocos = obter_lista_de_blocos()
+# --- FIM DA ALTERAÇÃO ---
 ano_atual = datetime.now().year
 
 col1, col2 = st.columns(2)
@@ -440,15 +466,6 @@ with col1:
         help="O ano contra o qual você quer comparar.",
         on_change=clear_download_state_pais
     )
-
-with col2:
-    paises = st.multiselect(
-        "Selecione o(s) país(es):",
-        options=lista_de_paises,
-        default=["China", "Estados Unidos"],
-        help="Você pode digitar para pesquisar e selecionar múltiplos países.",
-        on_change=clear_download_state_pais
-    )
     meses_selecionados = st.multiselect(
         "Meses de Análise (opcional):",
         options=LISTA_MESES,
@@ -456,11 +473,44 @@ with col2:
         on_change=clear_download_state_pais
     )
 
+with col2:
+    # --- ALTERAÇÃO AQUI: Novo filtro de Bloco ---
+    bloco_selecionado = st.selectbox(
+        "Filtrar por Bloco Econômico (opcional):",
+        options=lista_de_blocos,
+        index=0, # Default é "Nenhum / Seleção Manual"
+        on_change=clear_download_state_pais
+    )
+    
+    # Lógica para preencher e travar o seletor de países
+    if bloco_selecionado != "Nenhum / Seleção Manual":
+        paises_default = obter_paises_do_bloco(bloco_selecionado)
+        paises_disabled = True
+    else:
+        paises_default = ["China", "Estados Unidos"]
+        paises_disabled = False
+
+    paises = st.multiselect(
+        "Selecione o(s) país(es):",
+        options=lista_de_paises,
+        default=paises_default,
+        disabled=paises_disabled, # Trava o seletor se um bloco for escolhido
+        help="Você pode digitar para pesquisar e selecionar múltiplos países.",
+        on_change=clear_download_state_pais
+    )
+    # --- FIM DA ALTERAÇÃO ---
+
+
 # --- LÓGICA CONDICIONAL PARA ENTRADAS ---
 agrupado = True 
 nome_agrupamento = None
 
-if len(paises) > 1:
+# --- ALTERAÇÃO AQUI: Lógica de agrupamento modificada para blocos ---
+if bloco_selecionado != "Nenhum / Seleção Manual":
+    agrupado = True
+    nome_agrupamento = bloco_selecionado
+    st.header("2. Gerar Relatório") # Pula a opção de agrupar
+elif len(paises) > 1:
     st.header("2. Opções de Agrupamento")
     agrupamento_input = st.radio(
         "Deseja que os dados sejam agrupados ou separados?",
@@ -487,6 +537,7 @@ if len(paises) > 1:
 else:
     agrupado = False 
     st.header("2. Gerar Relatório")
+# --- FIM DA ALTERAÇÃO ---
 
 
 # --- EXECUÇÃO DO SCRIPT ---
@@ -885,7 +936,7 @@ if st.button(" Iniciar Geração do Relatório"):
                         for i, (codigo_municipio, valor_fob) in enumerate(importacoes_por_municipio.head(5).items()):
                             nome_municipio = df_uf_mun[df_uf_mun['CO_MUN_GEO'] == codigo_municipio]['NO_MUN_MIN'].iloc[0]
                             participacao_municipio_importacao = calcular_participacao(valor_fob, importacao_pais_ano) 
-                            texto_municipios_importacao_lista.append(f"{nome_municipio} ({participacao_municipio_importacao}%)")
+                            texto_municipios_importacao_lista.append(f"{nome_municipio} ({participacao_municipio_exportacao}%)")
                         texto_municipios_importacao += "; ".join(texto_municipios_importacao_lista) + "."
                     else: 
                         texto_importacao = f"Em {nome_periodo}, Minas Gerais não registrou importações provenientes {nome_relatorio_com_contracao}."
