@@ -16,22 +16,18 @@ import io
 import zipfile
 
 # --- CONFIGURAÇÕES GLOBAIS E CONSTANTES ---
-# ... (todo o bloco de funções de 'requests' até 'sanitize_filename' permanece igual) ...
 requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
-
 estados_brasileiros = {'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR',
                       'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SE', 'SP', 'TO'}
 meses_pt = {
     1: "janeiro", 2: "fevereiro", 3: "março", 4: "abril", 5: "maio", 6: "junho",
     7: "julho", 8: "agosto", 9: "setembro", 10: "outubro", 11: "novembro", 12: "dezembro"
 }
-
 MESES_MAPA = {
     "Janeiro": 1, "Fevereiro": 2, "Março": 3, "Abril": 4, "Maio": 5, "Junho": 6,
     "Julho": 7, "Agosto": 8, "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12
 }
 LISTA_MESES = list(MESES_MAPA.keys())
-
 ARTIGOS_PAISES_MAP = {
     "Afeganistão": "o", "África do Sul": "a", "Alemanha": "a", "Arábia Saudita": "a",
     "Argentina": "a", "Austrália": "a", "Bélgica": "a", "Brasil": "o", "Canadá": "o",
@@ -46,11 +42,12 @@ ARTIGOS_PAISES_MAP = {
     "Romênia": "a", "Rússia": "a", "Singapura": "a", "Suécia": "a", "Uruguai": "o",
     "Venezuela": "a", "Vietnã": "o"
 }
-
 NCM_COLS = ['VL_FOB', 'CO_PAIS', 'CO_MES', 'SG_UF_NCM', 'CO_NCM']
 NCM_DTYPES = {'CO_NCM': str, 'CO_SH4': str} 
 MUN_COLS = ['VL_FOB', 'CO_PAIS', 'CO_MES', 'SG_UF_MUN', 'CO_MUN']
 MUN_DTYPES = {'CO_MUN': str}
+
+# --- FUNÇÕES DE LÓGICA (Helpers) ---
 
 @st.cache_data(ttl=3600)
 def ler_dados_csv_online(url, usecols=None, dtypes=None):
@@ -229,7 +226,7 @@ def agregar_dados_por_municipio(df):
 def agregar_dados_por_produto(df, df_ncm):
     df_filtered = df
     def get_sh4(co_ncm):
-        co_ncm_str = str(co_ncm).strip().zfill(8) # Corrigido para zfill(8)
+        co_ncm_str = str(co_ncm).strip().zfill(8)
         if pd.isna(co_ncm_str) or co_ncm_str == "":
             return None
         return co_ncm_str[:4]
@@ -239,12 +236,12 @@ def agregar_dados_por_produto(df, df_ncm):
     produtos = df_sh4_not_null.groupby('SH4')['VL_FOB'].sum().sort_values(ascending=False).head(5)
     produtos_nomes = {}
     for sh4_code, valor in produtos.items():
-        filtro_ncm = df_ncm[df_ncm['CO_SH4'] == sh4_code]
+        filtro_ncm = df_ncm[df_ncm['CO_SH4'].astype(str).str.zfill(4) == sh4_code] # Compara SH4 com padding
         if not filtro_ncm.empty:
             nome_produto = filtro_ncm['NO_SH4_POR'].iloc[0]
             produtos_nomes[nome_produto] = valor
         else:
-            produtos_nomes[f"Produto NCM {sh4_code} não encontrado"] = valor
+            produtos_nomes[f"Produto SH4 {sh4_code} não encontrado"] = valor
     return produtos_nomes
 
 def obter_artigo_pais(nome_pais):
@@ -410,12 +407,7 @@ class DocumentoApp:
 if 'arquivos_gerados_pais' not in st.session_state:
     st.session_state.arquivos_gerados_pais = []
 
-# --- ALTERAÇÃO AQUI: Remove st.sidebar.empty() ---
-# st.sidebar.empty() # Removido para permitir que o app.py controle a sidebar
-# logo_sidebar_path = "LogoMinasGerais.png"
-# if os.path.exists(logo_sidebar_path):
-#     st.sidebar.image(logo_sidebar_path, width=200)
-
+# --- Callback para limpar o state ---
 def clear_download_state_pais():
     if 'arquivos_gerados_pais' in st.session_state:
         st.session_state.arquivos_gerados_pais = []
@@ -657,7 +649,7 @@ if st.button(" Iniciar Geração do Relatório"):
                 # --- LÓGICA PARA AGRUPADOS ---
                 app = DocumentoApp(logo_path=logo_path_to_use)
                 paises_corretos = nomes_paises_validos 
-                nome_relatorio = nome_agrupamento if nome_agrupamento else ', '.join(paises_corretos)
+                nome_relatorio = nome_agrupamento if (nome_agrupamento and nome_agrupamento.strip() != "") else ', '.join(paises_corretos)
 
                 # --- Geração de Texto ... ---
                 fluxo_e_balanca = f"Considerando {nome_periodo}, Minas Gerais e {nome_relatorio} tiveram um fluxo comercial de {formatar_valor(fluxo_comercial_ano)}, representando {'aumento' if variacao_fluxo > 0 else 'queda'} de {abs(variacao_fluxo):.2f}% em comparação com {nome_periodo_comp}. A balança comercial fechou {'positiva' if balanca_ano > 0 else 'negativa'} para Minas Gerais em {formatar_valor(balanca_ano)}, apresentando {'um crescimento' if variacao_balanca > 0 else 'uma queda'} de {abs(variacao_balanca):.1f}% em relação a {nome_periodo_comp}."
@@ -700,10 +692,7 @@ if st.button(" Iniciar Geração do Relatório"):
                     texto_municipios_importacao += "; ".join(texto_municipios_importacao_lista) + "."
                 
                 # --- Montagem do Documento ---
-                if nome_agrupamento:
-                    titulo_documento = f"Briefing - {nome_agrupamento} - {ano_principal}"
-                else:
-                    titulo_documento = f"Briefing - {', '.join(paises_corretos)} - {ano_principal}"
+                titulo_documento = f"Briefing - {nome_relatorio} - {ano_principal}"
                 
                 app.set_titulo(titulo_documento)
                 app.nova_secao()
@@ -734,7 +723,7 @@ if st.button(" Iniciar Geração do Relatório"):
                 paises_corretos = nomes_paises_validos
                 
                 for pais in paises_corretos:
-                    st.subheader(f"Processando: {pais}") # Mantido para feedback
+                    st.subheader(f"Processando: {pais}") 
                     app = DocumentoApp(logo_path=logo_path_to_use)
                     
                     codigos_paises_loop = [obter_codigo_pais(pais)]
@@ -961,18 +950,3 @@ if st.session_state.arquivos_gerados_pais:
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             key=f"download_{arquivo['name']}"
         )
-
-# --- Bloco de Rodapé (Corrigido com Logo à Esquerda) ---
-st.divider() 
-
-col1, col2 = st.columns([0.3, 0.7], vertical_alignment="center") 
-
-with col1:
-    logo_footer_path = "AEST Sede.png"
-    if os.path.exists(logo_footer_path):
-        st.image(logo_footer_path, width=150)
-    else:
-        st.caption("Logo AEST não encontrada.")
-
-with col2:
-    st.caption("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
