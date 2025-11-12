@@ -516,15 +516,6 @@ def clear_download_state_pais():
 # --- ENTRADAS PRINCIPAIS ---
 st.header("1. Configurações da Análise")
 
-# --- AVISO SOBRE LISTAS MANUAIS ---
-st.warning(
-    "⚠️ **Atenção:** As listas de países para os **Blocos Econômicos** "
-    "são definidas manualmente no código-fonte (variável `BLOCOS_ECONOMICOS`). "
-    "**Verifique se os nomes dos países nas listas correspondem**"
-    "exatamente aos nomes no arquivo `PAIS.csv` da Comex Stat."
-)
-# --- FIM DO AVISO ---
-
 # --- LÓGICA DE CARREGAMENTO DAS LISTAS ---
 try:
     lista_de_paises = obter_lista_de_paises()
