@@ -48,6 +48,83 @@ ARTIGOS_PAISES_MAP = {
     "Romênia": "a", "Rússia": "a", "Singapura": "a", "Suécia": "a", "Uruguai": "o",
     "Venezuela": "a", "Vietnã": "o"
 }
+
+# --- BLOCO MANUAL DE BLOCOS ECONÔMICOS ---
+#
+# ⚠️ ATENÇÃO: VERIFIQUE ESTES NOMES!
+# Os nomes dos países abaixo são palpites. Se o filtro de bloco não funcionar,
+# é porque o nome no arquivo PAIS.csv é diferente (ex: "Países Baixos" vs "Holanda").
+# Você DEVE ajustar esta lista para bater 100% com o arquivo PAIS.csv.
+#
+BLOCOS_ECONOMICOS = {
+    "América Central e Caribe": [
+        "Antígua e Barbuda", "Bahamas", "Barbados", "Belize", "Costa Rica", "Cuba", 
+        "Dominica", "El Salvador", "Granada", "Guatemala", "Haiti", "Honduras", 
+        "Jamaica", "Nicarágua", "Panamá", "República Dominicana", "Santa Lúcia", 
+        "São Cristóvão e Névis", "São Vicente e Granadinas", "Trinidad e Tobago"
+    ],
+    "América do Norte": ["Estados Unidos", "Canadá", "México"],
+    "América do Sul": [
+        "Argentina", "Bolívia", "Chile", "Colômbia", "Equador", "Guiana", 
+        "Paraguai", "Peru", "Suriname", "Uruguai", "Venezuela"
+    ],
+    "Associação de Nações do Sudeste Asiático - ASEAN": [
+        "Brunei", "Camboja", "Filipinas", "Indonésia", "Laos", "Malásia", 
+        "Myanmar", "Singapura", "Tailândia", "Vietnã"
+    ],
+    "Comunidade Andina das Nações - CAN": ["Bolívia", "Colômbia", "Equador", "Peru"],
+    "Europa": [
+        "Albânia", "Alemanha", "Andorra", "Áustria", "Bélgica", "Bielorrússia", 
+        "Bósnia-Herzegovina", "Bulgária", "Chipre", "Croácia", "Dinamarca", 
+        "Eslováquia", "Eslovênia", "Espanha", "Estônia", "Finlândia", "França", 
+        "Grécia", "Hungria", "Irlanda", "Islândia", "Itália", "Letônia", 
+        "Listenstaine", "Lituânia", "Luxemburgo", "Macedônia do Norte", "Malta", 
+        "Moldávia", "Mônaco", "Montenegro", "Noruega", "Países Baixos", "Polônia", 
+        "Portugal", "Reino Unido", "República Checa", "Romênia", "Rússia", 
+        "San Marino", "Sérvia", "Suécia", "Suíça", "Ucrânia", "Vaticano"
+    ],
+    "Mercado Comum do Sul - Mercosul": ["Argentina", "Paraguai", "Uruguai", "Venezuela"],
+    "Oceania": [
+        "Austrália", "Fiji", "Ilhas Marshall", "Ilhas Salomão", "Kiribati", 
+        "Micronésia", "Nauru", "Nova Zelândia", "Palau", "Papua Nova Guiné", 
+        "Samoa", "Tonga", "Tuvalu", "Vanuatu"
+    ],
+    "Oriente Médio": [
+        "Arábia Saudita", "Bahrein", "Catar", "Emirados Árabes Unidos", "Iêmen", 
+        "Irã", "Iraque", "Israel", "Jordânia", "Kuwait", "Líbano", "Omã", 
+        "Palestina", "Síria", "Turquia"
+    ],
+    "União Europeia - UE": [
+        "Alemanha", "Áustria", "Bélgica", "Bulgária", "Chipre", "Croácia", 
+        "Dinamarca", "Eslováquia", "Eslovênia", "Espanha", "Estônia", "Finlândia", 
+        "França", "Grécia", "Hungria", "Irlanda", "Itália", "Letônia", "Lituânia", 
+        "Luxemburgo", "Malta", "Países Baixos", "Polônia", "Portugal", 
+        "República Checa", "Romênia", "Suécia"
+    ],
+    "África": [
+        "África do Sul", "Angola", "Argélia", "Benin", "Botsuana", "Burkina Faso", 
+        "Burundi", "Cabo Verde", "Camarões", "Chade", "Comores", "Congo", 
+        "Costa do Marfim", "Djibuti", "Egito", "Eritreia", "Eswatini", "Etiópia", 
+        "Gabão", "Gâmbia", "Gana", "Guiné", "Guiné Equatorial", "Guiné-Bissau", 
+        "Lesoto", "Libéria", "Líbia", "Madagascar", "Malawi", "Mali", "Marrocos", 
+        "Maurício", "Mauritânia", "Moçambique", "Namíbia", "Níger", "Nigéria", 
+        "Quênia", "República Centro-Africana", "República Democrática do Congo", 
+        "Ruanda", "São Tomé e Príncipe", "Senegal", "Seychelles", "Serra Leoa", 
+        "Somália", "Sudão", "Sudão do Sul", "Tanzânia", "Togo", "Tunísia", 
+        "Uganda", "Zâmbia", "Zimbábue"
+    ],
+    "Ásia (Exclusive Oriente Médio)": [
+        "Afeganistão", "Armênia", "Azerbaijão", "Bangladesh", "Brunei", "Butão", 
+        "Camboja", "Cazaquistão", "China", "Coreia do Norte", "Coreia do Sul", 
+        "Filipinas", "Geórgia", "Índia", "Indonésia", "Japão", "Laos", "Malásia", 
+        "Maldivas", "Mongólia", "Myanmar", "Nepal", "Paquistão", "Quirguistão", 
+        "Singapura", "Sri Lanka", "Tailândia", "Tajiquistão", "Timor-Leste", 
+        "Turcomenistão", "Uzbequistão", "Vietnã"
+    ]
+}
+# --- FIM DO BLOCO MANUAL ---
+
+
 NCM_COLS = ['VL_FOB', 'CO_PAIS', 'CO_MES', 'SG_UF_NCM', 'CO_NCM']
 NCM_DTYPES = {'CO_NCM': str, 'CO_SH4': str} 
 MUN_COLS = ['VL_FOB', 'CO_PAIS', 'CO_MES', 'SG_UF_MUN', 'CO_MUN']
@@ -71,7 +148,6 @@ def ler_dados_csv_online(url, usecols=None, dtypes=None):
                              usecols=usecols)
             return df
         except requests.exceptions.RequestException as e:
-            # Log no console, mas não na UI do Streamlit para não poluir
             print(f"Erro ao acessar o CSV (tentativa {attempt + 1}/{retries}): {e}")
             if "Read timed out" in str(e) and attempt < retries - 1:
                 st.warning("Download demorou muito. Tentando novamente...")
@@ -80,7 +156,6 @@ def ler_dados_csv_online(url, usecols=None, dtypes=None):
                 st.warning("Retentando download...")
                 continue
             else:
-                # Silenciosamente retorna None, a função de carregamento tratará disso
                 return None
         except Exception as e:
             print(f"Erro inesperado ao baixar ou processar o CSV: {e}")
@@ -100,44 +175,32 @@ def carregar_dataframe(url, nome_arquivo, usecols=None, dtypes=None, mostrar_pro
             progress_bar.progress(100, text=f"{nome_arquivo} carregado com sucesso.")
         else:
             progress_bar.empty()
-            # O erro será mostrado na função 'obter_...' se for crítico
     return df
 
 @st.cache_data
 def obter_dados_paises():
-    # --- CORREÇÃO APLICADA: Usando NO_BLOCO_GR ---
-    # Esta é a coluna que contém a lista dos seus prints (América do Sul, UE-UE, etc.)
+    # --- CORREÇÃO APLICADA: Carrega SOMENTE as colunas necessárias ---
+    # Isso evita o erro se 'NO_BLOCO_GR' ou outra não existir
     url_pais = "https://balanca.economia.gov.br/balanca/bd/tabelas/PAIS.csv"
-    df_pais = carregar_dataframe(url_pais, "PAIS.csv", usecols=['NO_PAIS', 'CO_PAIS', 'NO_BLOCO_GR'], mostrar_progresso=False) 
+    df_pais = carregar_dataframe(url_pais, "PAIS.csv", usecols=['NO_PAIS', 'CO_PAIS'], mostrar_progresso=False) 
     # --- FIM DA CORREÇÃO ---
     if df_pais is not None and not df_pais.empty:
         return df_pais
     return None
 
-# --- FUNÇÕES DE BLOCO CORRIGIDAS ---
+# --- FUNÇÕES DE BLOCO CORRIGIDAS (AGORA MANUAIS) ---
 @st.cache_data
 def obter_lista_de_blocos():
-    """Retorna uma lista de nomes de blocos econômicos válidos da coluna NO_BLOCO_GR."""
-    df_pais = obter_dados_paises()
-    if df_pais is not None:
-        # --- CORREÇÃO APLICADA: Lendo de NO_BLOCO_GR ---
-        blocos = df_pais['NO_BLOCO_GR'].dropna().unique().tolist()
-        blocos.sort()
-        return blocos
-    return [] # Retorna lista vazia em caso de falha
+    """Retorna uma lista de nomes de blocos econômicos (hardcoded)."""
+    # Lê as chaves do nosso dicionário manual
+    blocos = sorted(list(BLOCOS_ECONOMICOS.keys()))
+    return blocos
 
 @st.cache_data
 def obter_paises_do_bloco(nome_bloco):
-    """Retorna uma lista de nomes de países para um bloco específico da coluna NO_BLOCO_GR."""
-    df_pais = obter_dados_paises()
-    if df_pais is not None:
-        # --- CORREÇÃO APLICADA: Filtrando por NO_BLOCO_GR ---
-        df_bloco = df_pais[
-            (df_pais['NO_BLOCO_GR'] == nome_bloco) & 
-            (df_pais['NO_PAIS'] != "Brasil")
-        ]
-        return df_bloco['NO_PAIS'].tolist()
-    return [] # Retorna lista vazia em caso de falha
+    """Retorna uma lista de nomes de países (hardcoded) para um bloco específico."""
+    # Retorna a lista de países do nosso dicionário manual
+    return BLOCOS_ECONOMICOS.get(nome_bloco, [])
 # --- FIM DAS FUNÇÕES CORRIGIDAS ---
 
 def obter_lista_de_paises():
@@ -165,7 +228,6 @@ def validar_paises(paises_selecionados):
     codigos_paises = []
     nomes_paises_validos = []
     paises_invalidos = []
-    # Cacheia o mapa de países para performance
     mapa_paises = pd.Series(df_pais.CO_PAIS.values, index=df_pais.NO_PAIS).to_dict()
     for pais in paises_selecionados:
         if pais.lower() == "brasil":
@@ -189,7 +251,6 @@ def filtrar_dados_por_mg_e_pais(df, codigos_paises, agrupado, meses_para_filtrar
     if agrupado:
         df_filtrado = df_filtrado[df_filtrado['CO_PAIS'].isin(codigos_paises)]
     else:
-        # Se não agrupado, codigos_paises terá apenas um item
         df_filtrado = df_filtrado[df_filtrado['CO_PAIS'] == codigos_paises[0]]
     df_filtrado = df_filtrado[df_filtrado['CO_MES'].isin(meses_para_filtrar)]
     return df_filtrado
@@ -455,29 +516,34 @@ def clear_download_state_pais():
 # --- ENTRADAS PRINCIPAIS ---
 st.header("1. Configurações da Análise")
 
+# --- AVISO SOBRE LISTAS MANUAIS ---
+st.warning(
+    "⚠️ **Atenção:** As listas de países para os **Blocos Econômicos** "
+    "são definidas manualmente no código-fonte (variável `BLOCOS_ECONOMICOS`). "
+    "**Verifique se os nomes dos países nas listas correspondem**"
+    "exatamente aos nomes no arquivo `PAIS.csv` da Comex Stat."
+)
+# --- FIM DO AVISO ---
+
 # --- LÓGICA DE CARREGAMENTO DAS LISTAS ---
 try:
     lista_de_paises = obter_lista_de_paises()
-    lista_de_blocos = obter_lista_de_blocos()
+    lista_de_blocos = obter_lista_de_blocos() # Agora lê do dicionário manual
 except Exception as e:
-    st.error(f"Erro crítico ao carregar listas iniciais de países/blocos: {e}")
-    # Define listas vazias para evitar que o app quebre
+    st.error(f"Erro crítico ao carregar listas iniciais: {e}")
     lista_de_paises = ["Falha ao carregar países"]
     lista_de_blocos = ["Falha ao carregar blocos"]
 
-# --- CORREÇÃO APLICADA: Lógica de 'default' resiliente ---
-# Isso evita o erro 'StreamlitAPIException' se a lista de países falhar
+# --- Lógica de 'default' resiliente ---
 valores_padrao = ["China", "Estados Unidos"]
 valores_padrao_filtrados = [pais for pais in valores_padrao if pais in lista_de_paises]
 
 if not valores_padrao_filtrados and len(lista_de_paises) > 0 and "Erro" not in lista_de_paises[0]:
-    # Se os padrões não existem, mas a lista sim, pega o primeiro país
     valores_padrao_filtrados = [lista_de_paises[0]]
 elif "Erro" in lista_de_paises[0] or "Falha" in lista_de_paises[0]:
-    # Se a lista de países falhou em carregar, o default DEVE ser uma lista vazia
     valores_padrao_filtrados = [] 
-    st.warning("Não foi possível carregar a lista de países. O site de dados pode estar fora do ar. A seleção manual de países pode não funcionar.")
-# --- FIM DA CORREÇÃO ---
+    st.warning("Não foi possível carregar a lista de países. O site de dados pode estar fora do ar.")
+# --- FIM DA LÓGICA ---
 
 
 ano_atual = datetime.now().year
@@ -510,7 +576,7 @@ with col1:
 with col2:
     blocos_selecionados = st.multiselect(
         "Filtrar por Bloco(s) (opcional):",
-        options=lista_de_blocos, # Agora populado por NO_BLOCO_GR
+        options=lista_de_blocos, # Populado pelo dicionário manual
         help="Os países destes blocos serão adicionados à seleção.",
         on_change=clear_download_state_pais
     )
@@ -532,7 +598,7 @@ nome_agrupamento = None
 paises_do_bloco = []
 if blocos_selecionados:
     for bloco in blocos_selecionados:
-        paises_do_bloco.extend(obter_paises_do_bloco(bloco))
+        paises_do_bloco.extend(obter_paises_do_bloco(bloco)) # Lê do dicionário
 
 # Combina as duas listas e remove duplicatas
 paises = sorted(list(set(paises_selecionados_manual + paises_do_bloco)))
@@ -542,7 +608,6 @@ paises = sorted(list(set(paises_selecionados_manual + paises_do_bloco)))
 if len(paises) > 1:
     st.header("2. Opções de Agrupamento")
     
-    # Se um bloco foi selecionado E nenhum país manual, força o agrupamento
     if blocos_selecionados and not paises_selecionados_manual:
         agrupado = True
         st.info(f"Análise de Bloco será agrupada.")
@@ -613,7 +678,7 @@ if st.button(" Iniciar Geração do Relatório"):
             if df_ncm is None or df_uf_mun is None:
                 st.error("Não foi possível carregar tabelas auxiliares (NCM ou Municípios). Abortando.")
                 st.stop()
-            
+
             # --- 2. Bloco de Exportação ---
             df_exp_ano = carregar_dataframe(url_exp_ano_principal, f"EXP_{ano_principal}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
             df_exp_ano_anterior = carregar_dataframe(url_exp_ano_comparacao, f"EXP_{ano_comparacao}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
@@ -673,7 +738,7 @@ if st.button(" Iniciar Geração do Relatório"):
             produtos_exportacao = agregar_dados_por_produto(df_exp_ano_mg_paises.copy(), df_ncm)
             
             # --- 2b. Municípios Exportação ---
-            df_exp_mun = carregar_dataframe(url_exp_mun_principal, f"EXP_{ano_principal}_MUN.csv", usecols=MUN_COLS)
+            df_exp_mun = carregar_dataframe(url_exp_mun_principal, f"EXP_{ano_principal}_MUN.csv", usecols=MUN_COLS, dtypes=MUN_DTYPES)
             if df_exp_mun is None:
                 st.error("Não foi possível carregar dados de exportação por município. Abortando.")
                 st.stop()
@@ -721,7 +786,7 @@ if st.button(" Iniciar Geração do Relatório"):
             posicao_mg_pais_imp = calcular_posicao_estado_pais(df_imp_ano_estados, codigos_paises)
             produtos_importacao = agregar_dados_por_produto(df_imp_ano_mg_paises.copy(), df_ncm)
             
-            df_imp_mun = carregar_dataframe(url_imp_mun_principal, f"IMP_{ano_principal}_MUN.csv", usecols=MUN_COLS)
+            df_imp_mun = carregar_dataframe(url_imp_mun_principal, f"IMP_{ano_principal}_MUN.csv", usecols=MUN_COLS, dtypes=MUN_DTYPES)
             if df_imp_mun is None:
                 st.error("Não foi possível carregar dados de importação por município. Abortando.")
                 st.stop()
@@ -827,6 +892,7 @@ if st.button(" Iniciar Geração do Relatório"):
                     codigos_paises_loop = [obter_codigo_pais(pais)]
 
                     # --- 2. Bloco de Exportação (Separado) ---
+                    # Recarrega os dataframes (ou usa cache se ainda disponível)
                     df_exp_ano = carregar_dataframe(url_exp_ano_principal, f"EXP_{ano_principal}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES, mostrar_progresso=False)
                     df_exp_ano_anterior = carregar_dataframe(url_exp_ano_comparacao, f"EXP_{ano_comparacao}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES, mostrar_progresso=False)
                     if df_exp_ano is None or df_exp_ano_anterior is None:
@@ -856,7 +922,7 @@ if st.button(" Iniciar Geração do Relatório"):
                     posicao_mg_pais_exp = calcular_posicao_estado_pais(df_exp_ano_estados, codigos_paises_loop)
                     produtos_exportacao = agregar_dados_por_produto(df_exp_ano_mg_paises.copy(), df_ncm)
                     
-                    df_exp_mun = carregar_dataframe(url_exp_mun_principal, f"EXP_{ano_principal}_MUN.csv", usecols=MUN_COLS, mostrar_progresso=False)
+                    df_exp_mun = carregar_dataframe(url_exp_mun_principal, f"EXP_{ano_principal}_MUN.csv", usecols=MUN_COLS, dtypes=MUN_DTYPES, mostrar_progresso=False)
                     if df_exp_mun is None:
                         st.error(f"Não foi possível carregar dados de exportação por município para {pais}.")
                         continue
@@ -896,7 +962,7 @@ if st.button(" Iniciar Geração do Relatório"):
                     posicao_mg_pais_imp = calcular_posicao_estado_pais(df_imp_ano_estados, codigos_paises_loop)
                     produtos_importacao = agregar_dados_por_produto(df_imp_ano_mg_paises.copy(), df_ncm)
                     
-                    df_imp_mun = carregar_dataframe(url_imp_mun_principal, f"IMP_{ano_principal}_MUN.csv", usecols=MUN_COLS, mostrar_progresso=False)
+                    df_imp_mun = carregar_dataframe(url_imp_mun_principal, f"IMP_{ano_principal}_MUN.csv", usecols=MUN_COLS, dtypes=MUN_DTYPES, mostrar_progresso=False)
                     if df_imp_mun is None:
                         st.error(f"Não foi possível carregar dados de importação por município para {pais}.")
                         continue
