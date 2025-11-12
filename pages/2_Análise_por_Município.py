@@ -125,6 +125,7 @@ def formatar_valor(valor):
 def sanitize_filename(filename):
     return re.sub(r'[\\/*?:"<>|]', "_", filename)
 
+# --- FUNÇÃO ADICIONADA ---
 def calcular_diferenca_percentual(valor_atual, valor_anterior):
     """Calcula a diferença percentual entre dois valores."""
     if valor_anterior == 0:
@@ -141,7 +142,7 @@ def calcular_diferenca_percentual(valor_atual, valor_anterior):
     diferenca = abs(diferenca)
     return diferenca, tipo_diferenca
 
-# --- CLASSE DOCUMENTO ---
+# --- CLASSE DOCUMENTO ADICIONADA ---
 class DocumentoApp:
     def __init__(self, logo_path):
         self.doc = Document()
@@ -283,13 +284,10 @@ class DocumentoApp:
 
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.sidebar.empty()
-logo_sidebar_path = "LogoMinasGerais.png"
-if os.path.exists(logo_sidebar_path):
-    st.sidebar.image(logo_sidebar_path, width=200)
+# st.sidebar.empty() # Removido, app.py cuida disso
 
 st.header("1. Configurações da Análise Municipal")
-st.warning("⚠️ **Aviso de Performance:** Esta análise carrega arquivos de dados muito grandes (mais de 1.5 GB por ano) e **não funcionará** no plano gratuito do Streamlit Cloud (limite de 1GB RAM). Use uma plataforma com mais memória (como Hugging Face Spaces ou um servidor local).")
+st.warning("⚠️ **Aviso de Performance:** Esta análise carrega arquivos de dados muito grandes (mais de 1.5 GB por ano) e **pode falhar** em planos de hospedagem gratuitos com 1GB de RAM (como o Streamlit Cloud).")
 
 def clear_download_state_mun():
     """Limpa os relatórios gerados da sessão."""
@@ -311,6 +309,7 @@ with col1:
     municipios_selecionados = st.multiselect(
         "Selecione o(s) município(s):",
         options=lista_de_municipios,
+        # --- CORREÇÃO AQUI: Default com nome correto ---
         default=["BELO HORIZONTE"],
         help="Você pode digitar para pesquisar.",
         on_change=clear_download_state_mun
@@ -329,7 +328,7 @@ with col2:
         on_change=clear_download_state_mun
     )
 
-# --- ALTERAÇÃO AQUI: Lógica de Agrupamento com Nome ---
+# --- Lógica de Agrupamento ---
 agrupado = True
 nome_agrupamento = None
 if len(municipios_selecionados) > 1:
@@ -358,8 +357,8 @@ if len(municipios_selecionados) > 1:
 
     st.header("3. Gerar Análise")
 else:
+    agrupado = False # Se for só 1 município, a lógica é sempre "separado"
     st.header("2. Gerar Análise")
-# --- FIM DA ALTERAÇÃO ---
 
 
 # --- Inicialização do Session State ---
@@ -411,7 +410,8 @@ if st.button("Iniciar Análise por Município"):
             if not agrupado:
                 municipios_para_processar = municipios_selecionados
             else:
-                municipios_para_processar = [nome_agrupamento if nome_agrupamento else ", ".join(municipios_selecionados)]
+                municipios_para_processar = [nome_agrupamento if (nome_agrupamento and nome_agrupamento.strip() != "") else ", ".join(municipios_selecionados)]
+
 
             for municipio_nome in municipios_para_processar:
                 
