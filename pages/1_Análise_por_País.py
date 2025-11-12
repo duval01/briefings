@@ -453,7 +453,7 @@ with col2:
     )
 
 # --- LÓGICA CONDICIONAL PARA ENTRADAS ---
-agrupado = True # Padrão é agrupado se houver > 1 país
+agrupado = True 
 nome_agrupamento = None
 
 if len(paises) > 1:
@@ -481,7 +481,7 @@ if len(paises) > 1:
             )
     st.header("3. Gerar Relatório")
 else:
-    agrupado = False # Se for só 1 país, a lógica é sempre "separado"
+    agrupado = False 
     st.header("2. Gerar Relatório")
 
 
