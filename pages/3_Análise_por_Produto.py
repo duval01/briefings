@@ -93,7 +93,6 @@ def obter_lista_de_produtos_sh2():
     df_ncm = obter_dados_produtos_ncm()
     if df_ncm is not None:
         df_sh2 = df_ncm.drop_duplicates(subset=['CO_SH2']).dropna()
-        # --- CORREÇÃO AQUI: zfill(2) para códigos SH2 ---
         df_sh2['Display'] = df_sh2['CO_SH2'].astype(str).str.zfill(2) + " - " + df_sh2['NO_SH2_POR']
         lista_produtos = df_sh2['Display'].unique().tolist()
         lista_produtos.sort()
@@ -110,11 +109,9 @@ def obter_lista_de_produtos_sh4(codigos_sh2_selecionados):
 
     # Filtra por SH2 se algum for selecionado
     if codigos_sh2_selecionados:
-        # Converte os códigos SH2 (que são int no CSV) para string com 2 dígitos
         codigos_sh2_str = [str(c).zfill(2) for c in codigos_sh2_selecionados]
         df_sh4 = df_sh4[df_sh4['CO_SH2'].astype(str).str.zfill(2).isin(codigos_sh2_str)]
 
-    # --- CORREÇÃO AQUI: zfill(4) para códigos SH4 ---
     df_sh4['Display'] = df_sh4['CO_SH4'].astype(str).str.zfill(4) + " - " + df_sh4['NO_SH4_POR']
     lista_produtos = df_sh4['Display'].unique().tolist()
     lista_produtos.sort()
@@ -126,11 +123,7 @@ def get_sh4(co_ncm):
     co_ncm_str = str(co_ncm).strip()
     if pd.isna(co_ncm_str) or co_ncm_str == "":
         return None
-    
-    # Garante que o NCM tenha 8 dígitos, preenchendo com 0 à esquerda se necessário
     co_ncm_str = co_ncm_str.zfill(8)
-    
-    # A lógica correta é sempre pegar os 4 primeiros dígitos de um NCM de 8.
     return co_ncm_str[:4]
 
 def formatar_valor(valor):
@@ -138,7 +131,6 @@ def formatar_valor(valor):
     if valor < 0:
         prefixo = "-"
         valor = abs(valor)
-
     if valor >= 1_000_000_000:
         valor_formatado_str = f"{(valor / 1_000_000_000):.2f}".replace('.',',')
         unidade = "bilhão" if (valor / 1_000_000_000) < 2 else "bilhões"
@@ -150,21 +142,17 @@ def formatar_valor(valor):
     if valor >= 1_000:
         valor_formatado_str = f"{(valor / 1_000):.2f}".replace('.',',')
         return f"{prefixo}US$ {valor_formatado_str} mil"
-    
     valor_formatado_str = f"{valor:.2f}".replace('.',',')
     return f"{prefixo}US$ {valor_formatado_str}"
 
 def sanitize_filename(filename):
     return re.sub(r'[\\/*?:"<>|]', "_", filename)
 
-# --- FUNÇÃO ADICIONADA ---
 def calcular_diferenca_percentual(valor_atual, valor_anterior):
     """Calcula a diferença percentual entre dois valores."""
     if valor_anterior == 0:
         return 0.0, "acréscimo" if valor_atual > 0 else "redução" if valor_atual < 0 else "estabilidade"
-    
     diferenca = round(((valor_atual - valor_anterior) / valor_anterior) * 100, 2)
-    
     if diferenca > 0:
         tipo_diferenca = "um acréscimo"
     elif diferenca < 0:
@@ -174,7 +162,6 @@ def calcular_diferenca_percentual(valor_atual, valor_anterior):
     diferenca = abs(diferenca)
     return diferenca, tipo_diferenca
 
-# --- CLASSE DOCUMENTO ADICIONADA ---
 class DocumentoApp:
     def __init__(self, logo_path):
         self.doc = Document()
@@ -183,7 +170,6 @@ class DocumentoApp:
         self.titulo_doc = ""
         self.logo_path = logo_path
         self.diretorio_base = "/tmp/" 
-
     def set_titulo(self, titulo):
         self.titulo_doc = sanitize_filename(titulo)
         self.criar_cabecalho()
@@ -193,7 +179,6 @@ class DocumentoApp:
         run.font.size = Pt(12)
         run.bold = True
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
     def adicionar_conteudo_formatado(self, texto):
         p = self.doc.add_paragraph()
         p.paragraph_format.first_line_indent = Cm(1.25)
@@ -201,7 +186,6 @@ class DocumentoApp:
         run.font.name = 'Times New Roman'
         run.font.size = Pt(12)
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        
     def adicionar_paragrafo(self, texto): 
         p = self.doc.add_paragraph()
         p.paragraph_format.first_line_indent = Cm(1.25)
@@ -209,7 +193,6 @@ class DocumentoApp:
         run.font.name = 'Times New Roman'
         run.font.size = Pt(12)
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-
     def adicionar_titulo(self, texto):
         p = self.doc.add_paragraph()
         if self.subsecao_atual == 0:
@@ -220,27 +203,22 @@ class DocumentoApp:
         run.font.size = Pt(12)
         run.bold = True
         p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-
     def nova_secao(self):
         self.secao_atual += 1
         self.subsecao_atual = 0
-
     def criar_cabecalho(self):
         section = self.doc.sections[0]
         section.top_margin = Cm(1.27)
         header = section.header
-        
         largura_total_cm = 16.0
         table = header.add_table(rows=1, cols=2, width=Cm(largura_total_cm))
         table.alignment = WD_ALIGN_PARAGRAPH.CENTER
         table.columns[0].width = Cm(4.0)
         table.columns[1].width = Cm(12.0)
-
         cell_imagem = table.cell(0, 0)
         paragraph_imagem = cell_imagem.paragraphs[0]
         paragraph_imagem.paragraph_format.space_before = Pt(0)
         paragraph_imagem.paragraph_format.space_after = Pt(0)
-        
         run_imagem = paragraph_imagem.add_run()
         if self.logo_path and os.path.exists(self.logo_path):
             try:
@@ -251,9 +229,7 @@ class DocumentoApp:
                 paragraph_imagem.add_run("[Logo não encontrado]")
         else:
             paragraph_imagem.add_run("[Logo não encontrado]")
-
         paragraph_imagem.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
         cell_texto = table.cell(0, 1)
         textos = [
             "GOVERNO DO ESTADO DE MINAS GERAIS",
@@ -261,28 +237,24 @@ class DocumentoApp:
             "Subsecretaria de Promoção de Investimentos e Cadeias Produtivas",
             "Superintendência de Atração de Investimentos e Estímulo à Exportação"
         ]
-        
         def formatar_paragrafo_cabecalho(p):
             p.paragraph_format.space_before = Pt(0)
             p.paragraph_format.space_after = Pt(0)
             p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
             p.paragraph_format.line_spacing = Pt(11)
             p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-
         p = cell_texto.paragraphs[0]
         formatar_paragrafo_cabecalho(p)
         run = p.add_run(textos[0])
         run.font.name = 'Times New Roman'
         run.font.size = Pt(11)
         run.bold = True 
-
         p = cell_texto.add_paragraph()
         formatar_paragrafo_cabecalho(p)
         run = p.add_run(textos[1])
         run.font.name = 'Times New Roman'
         run.font.size = Pt(11)
         run.bold = True
-        
         for texto in textos[2:]: 
             p = cell_texto.add_paragraph()
             formatar_paragrafo_cabecalho(p)
@@ -290,31 +262,21 @@ class DocumentoApp:
             run.font.name = 'Times New Roman'
             run.font.size = Pt(11)
             run.bold = False 
-
     def finalizar_documento(self):
-        """Salva o documento em memória e retorna."""
-        
         diretorio_real = self.diretorio_base
         try:
             os.makedirs(diretorio_real, exist_ok=True)
         except Exception:
             diretorio_real = "/tmp/"
             os.makedirs(diretorio_real, exist_ok=True)
-            
         nome_arquivo = f"{self.titulo_doc}.docx"
         nome_arquivo_sanitizado = sanitize_filename(nome_arquivo)
-        
         file_stream = io.BytesIO()
         self.doc.save(file_stream)
         file_stream.seek(0)
-        
         file_bytes = file_stream.getvalue()
-        # --- ALTERAÇÃO AQUI: Mensagem de sucesso usa o nome do arquivo ---
         st.success(f"Documento '{nome_arquivo_sanitizado}' gerado com sucesso!")
-        
         return file_bytes, nome_arquivo_sanitizado
-# --- FIM DAS FUNÇÕES COPIADAS ---
-
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 # st.sidebar.empty() # Removido
@@ -374,7 +336,7 @@ with col2:
 
 # --- Lógica de Agrupamento ---
 agrupado = True
-nome_agrupamento = None # --- ADICIONADO ---
+nome_agrupamento = None 
 if len(produtos_selecionados) > 1:
     st.header("2. Opções de Agrupamento")
     agrupamento_input = st.radio(
@@ -512,7 +474,6 @@ if st.button("Iniciar Análise por Produto"):
                 exp_final[f'Valor {ano_principal}'] = exp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
                 exp_final[f'Valor {ano_comparacao}'] = exp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
                 
-                # --- ALTERAÇÃO AQUI: Ordena e esconde o índice ---
                 df_display_exp = exp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).reset_index(drop=True)
                 st.dataframe(
                     df_display_exp[['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']].head(10),
@@ -560,7 +521,6 @@ if st.button("Iniciar Análise por Produto"):
                 imp_final[f'Valor {ano_principal}'] = imp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
                 imp_final[f'Valor {ano_comparacao}'] = imp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
 
-                # --- ALTERAÇÃO AQUI: Ordena e esconde o índice ---
                 df_display_imp = imp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).reset_index(drop=True)
                 st.dataframe(
                     df_display_imp[['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']].head(10),
@@ -627,13 +587,12 @@ if st.session_state.arquivos_gerados_produto:
             key=f"download_{arquivo['name']}"
         )
 
-# --- Bloco de Rodapé (Corrigido com Logo à Esquerda) ---
+# --- Bloco de Rodapé ---
 st.divider() 
 
 col1, col2 = st.columns([0.3, 0.7], vertical_alignment="center") 
 
 with col1:
-    # Coluna 1 (menor) agora contém a logo
     logo_footer_path = "AEST Sede.png"
     if os.path.exists(logo_footer_path):
         st.image(logo_footer_path, width=150)
@@ -641,5 +600,4 @@ with col1:
         st.caption("Logo AEST não encontrada.")
 
 with col2:
-    # Coluna 2 (maior) agora contém o texto
     st.caption("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
