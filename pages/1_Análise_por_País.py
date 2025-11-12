@@ -15,6 +15,10 @@ import re
 import io
 import zipfile
 
+logo_sidebar_path = "LogoMinasGerais.png"
+if os.path.exists(logo_sidebar_path):
+    st.sidebar.image(logo_sidebar_path, width=200)
+
 # --- CONFIGURAÇÕES GLOBAIS E CONSTANTES ---
 requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
 estados_brasileiros = {'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR',
