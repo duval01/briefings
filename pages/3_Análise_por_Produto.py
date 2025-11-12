@@ -79,7 +79,6 @@ def obter_dados_paises():
     url_pais = "https://balanca.economia.gov.br/balanca/bd/tabelas/PAIS.csv"
     df_pais = carregar_dataframe(url_pais, "PAIS.csv", usecols=['NO_PAIS', 'CO_PAIS'], mostrar_progresso=False) 
     if df_pais is not None and not df_pais.empty:
-        # Cria um mapa de Código -> Nome
         mapa_codigo_nome = pd.Series(df_pais.NO_PAIS.values, index=df_pais.CO_PAIS).to_dict()
         lista_nomes = sorted(df_pais['NO_PAIS'].unique().tolist())
         mapa_nome_codigo = pd.Series(df_pais.CO_PAIS.values, index=df_pais.NO_PAIS).to_dict()
@@ -90,23 +89,24 @@ def obter_dados_paises():
 def obter_dados_produtos_ncm():
     """Carrega a tabela NCM completa (SH2, SH4 e SH6) e armazena em cache."""
     url_ncm = "https://balanca.economia.gov.br/balanca/bd/tabelas/NCM_SH.csv"
-    # --- CORREÇÃO: Usando CO_SH6 e NO_SH6_POR ---
     usecols_ncm = ['CO_SH2', 'NO_SH2_POR', 'CO_SH4', 'NO_SH4_POR', 'CO_SH6', 'NO_SH6_POR']
     df_ncm = carregar_dataframe(url_ncm, "NCM_SH.csv", usecols=usecols_ncm, mostrar_progresso=False)
     if df_ncm is not None:
-        # --- NOVO: Criar mapas de nomes de produtos para reuso ---
+        # Criar mapas de nomes de produtos para reuso
+        df_ncm['CO_SH2_STR'] = df_ncm['CO_SH2'].astype(str).str.zfill(2)
         df_ncm['CO_SH4_STR'] = df_ncm['CO_SH4'].astype(str).str.zfill(4)
         df_ncm['CO_SH6_STR'] = df_ncm['CO_SH6'].astype(str).str.zfill(6)
         
+        mapa_sh2 = df_ncm.drop_duplicates('CO_SH2_STR').set_index('CO_SH2_STR')['NO_SH2_POR']
         mapa_sh4 = df_ncm.drop_duplicates('CO_SH4_STR').set_index('CO_SH4_STR')['NO_SH4_POR']
         mapa_sh6 = df_ncm.drop_duplicates('CO_SH6_STR').set_index('CO_SH6_STR')['NO_SH6_POR']
         
-        return df_ncm, mapa_sh4.to_dict(), mapa_sh6.to_dict()
-    return None, {}, {}
+        return df_ncm, mapa_sh2.to_dict(), mapa_sh4.to_dict(), mapa_sh6.to_dict()
+    return None, {}, {}, {}
 
 def obter_lista_de_produtos_sh2():
     """Retorna uma lista de capítulos (SH2)."""
-    df_ncm, _, _ = obter_dados_produtos_ncm()
+    df_ncm, _, _, _ = obter_dados_produtos_ncm()
     if df_ncm is not None:
         df_sh2 = df_ncm.drop_duplicates(subset=['CO_SH2']).dropna()
         df_sh2['Display'] = df_sh2['CO_SH2'].astype(str).str.zfill(2) + " - " + df_sh2['NO_SH2_POR']
@@ -115,43 +115,41 @@ def obter_lista_de_produtos_sh2():
         return lista_produtos
     return ["Erro ao carregar lista de capítulos"]
 
-def obter_lista_de_produtos_sh4(codigos_sh2_selecionados):
-    """Retorna uma lista de produtos (SH4), opcionalmente filtrada por SH2."""
-    df_ncm, _, _ = obter_dados_produtos_ncm()
+# --- ALTERADO: Filtro SH2 removido ---
+def obter_lista_de_produtos_sh4():
+    """Retorna uma lista de produtos (SH4)."""
+    df_ncm, _, _, _ = obter_dados_produtos_ncm()
     if df_ncm is None:
         return ["Erro ao carregar lista de produtos"]
 
     df_sh4 = df_ncm.drop_duplicates(subset=['CO_SH4']).dropna(subset=['CO_SH4', 'NO_SH4_POR'])
-
-    if codigos_sh2_selecionados:
-        codigos_sh2_str = [str(c).zfill(2) for c in codigos_sh2_selecionados]
-        df_sh4 = df_sh4[df_sh4['CO_SH2'].astype(str).str.zfill(2).isin(codigos_sh2_str)]
-
     df_sh4['Display'] = df_sh4['CO_SH4'].astype(str).str.zfill(4) + " - " + df_sh4['NO_SH4_POR']
     lista_produtos = df_sh4['Display'].unique().tolist()
     lista_produtos.sort()
     return lista_produtos
 
+# --- ALTERADO: Filtro SH4 removido ---
 @st.cache_data
-def obter_lista_de_produtos_sh6(codigos_sh4_selecionados):
-    """Retorna uma lista de produtos (SH6), opcionalmente filtrada por SH4."""
-    df_ncm, _, _ = obter_dados_produtos_ncm()
+def obter_lista_de_produtos_sh6():
+    """Retorna uma lista de produtos (SH6)."""
+    df_ncm, _, _, _ = obter_dados_produtos_ncm()
     if df_ncm is None:
         return ["Erro ao carregar lista de SH6"]
     
-    # --- CORREÇÃO: Usa CO_SH6 e NO_SH6_POR ---
     df_sh6 = df_ncm.drop_duplicates(subset=['CO_SH6']).dropna(subset=['CO_SH6', 'NO_SH6_POR'])
-
-    if codigos_sh4_selecionados:
-        codigos_sh4_str = [str(c).zfill(4) for c in codigos_sh4_selecionados]
-        df_sh6['CO_SH4_TEMP'] = df_sh6['CO_SH6'].astype(str).str.zfill(6).str[:4]
-        df_sh6 = df_sh6[df_sh6['CO_SH4_TEMP'].isin(codigos_sh4_str)]
-
-    # --- CORREÇÃO: Usa CO_SH6 e NO_SH6_POR ---
     df_sh6['Display'] = df_sh6['CO_SH6'].astype(str).str.zfill(6) + " - " + df_sh6['NO_SH6_POR']
     lista_produtos = df_sh6['Display'].unique().tolist()
     lista_produtos.sort()
     return lista_produtos
+
+# --- NOVO: Função para extrair SH2 ---
+def get_sh2(co_ncm):
+    """Extrai SH2 de um CO_NCM."""
+    co_ncm_str = str(co_ncm).strip()
+    if pd.isna(co_ncm_str) or co_ncm_str == "":
+        return None
+    co_ncm_str = co_ncm_str.zfill(8)
+    return co_ncm_str[:2] # Pega os 2 primeiros dígitos
 
 def get_sh4(co_ncm):
     """Extrai SH4 de um CO_NCM."""
@@ -333,8 +331,11 @@ def clear_download_state_prod():
 
 # Carrega dados de Países e Produtos
 lista_de_produtos_sh2 = obter_lista_de_produtos_sh2()
+# --- ALTERADO: Carrega listas completas ---
+lista_de_produtos_sh4 = obter_lista_de_produtos_sh4()
+lista_de_produtos_sh6 = obter_lista_de_produtos_sh6()
 mapa_nomes_paises, lista_paises_nomes, mapa_paises_reverso = obter_dados_paises()
-_, mapa_sh4_nomes, mapa_sh6_nomes = obter_dados_produtos_ncm() # Pega os mapas de nomes
+_, mapa_sh2_nomes, mapa_sh4_nomes, mapa_sh6_nomes = obter_dados_produtos_ncm() # Pega os mapas de nomes
 ano_atual = datetime.now().year
 
 col1, col2 = st.columns(2)
@@ -356,16 +357,14 @@ with col1:
         on_change=clear_download_state_prod 
     )
     
-    # --- NOVO: Seletor de N Países ---
     top_n_paises = st.number_input(
         "Nº de Países no Ranking:",
         min_value=1,
-        max_value=100, # Limite razoável
-        value=10,      # Valor padrão
+        max_value=100,
+        value=10,
         help="Quantos países devem ser exibidos nas tabelas de ranking (Top 10, Top 20, etc.).",
         on_change=clear_download_state_prod
     )
-    # --- FIM NOVO ---
 
 with col2:
     paises_selecionados_nomes = st.multiselect(
@@ -375,53 +374,44 @@ with col2:
         on_change=clear_download_state_prod 
     )
 
+    # --- ALTERADO: Filtros independentes ---
     sh2_selecionados_nomes = st.multiselect(
-        "1. Filtrar por Capítulo (SH2) (opcional):",
+        "1. Selecione Capítulos (SH2) (opcional):",
         options=lista_de_produtos_sh2,
-        help="Filtre a lista de produtos SH4 abaixo.",
+        help="Selecione um ou mais capítulos (2 dígitos).",
         on_change=clear_download_state_prod 
     )
-    codigos_sh2_selecionados = [int(s.split(" - ")[0]) for s in sh2_selecionados_nomes]
-    
-    lista_de_produtos_sh4_filtrada = obter_lista_de_produtos_sh4(codigos_sh2_selecionados)
     
     sh4_selecionados_nomes = st.multiselect(
-        "2. Selecione o(s) produto(s) (SH4) (opcional):",
-        options=lista_de_produtos_sh4_filtrada,
+        "2. Selecione Produtos (SH4) (opcional):",
+        options=lista_de_produtos_sh4, # Usa a lista completa
         default=[],
-        help="Selecione um ou mais SH4. Isso filtrará a lista de SH6 abaixo.",
+        help="Selecione um ou mais produtos (4 dígitos).",
         on_change=clear_download_state_prod 
     )
-    codigos_sh4_selecionados = [s.split(" - ")[0] for s in sh4_selecionados_nomes]
-
-    lista_de_produtos_sh6_filtrada = obter_lista_de_produtos_sh6(codigos_sh4_selecionados)
     
     sh6_selecionados_nomes = st.multiselect(
-        "3. Refinar por SH6 (opcional):",
-        options=lista_de_produtos_sh6_filtrada,
+        "3. Selecione Subposições (SH6) (opcional):",
+        options=lista_de_produtos_sh6, # Usa a lista completa
         default=[],
-        help="Selecione um ou mais SH6. Se selecionado, este filtro substitui o SH4.",
+        help="Selecione uma ou mais subposições (6 dígitos).",
         on_change=clear_download_state_prod
     )
+    # --- FIM ALTERADO ---
 
 
 # --- Lógica de Agrupamento ---
 agrupado = True
 nome_agrupamento = None 
 
-if len(sh6_selecionados_nomes) > 1:
-    nome_nivel = "SH6"
-    produtos_para_agrupar_nomes = sh6_selecionados_nomes
-elif len(sh4_selecionados_nomes) > 1 and not sh6_selecionados_nomes:
-    nome_nivel = "SH4"
-    produtos_para_agrupar_nomes = sh4_selecionados_nomes
-else:
-    produtos_para_agrupar_nomes = [] 
+# --- ALTERADO: Lógica de agrupamento para seleções múltiplas ---
+total_selecionado = len(sh2_selecionados_nomes) + len(sh4_selecionados_nomes) + len(sh6_selecionados_nomes)
+produtos_para_agrupar_nomes = sh2_selecionados_nomes + sh4_selecionados_nomes + sh6_selecionados_nomes
 
-if len(produtos_para_agrupar_nomes) > 1:
+if total_selecionado > 1:
     st.header("2. Opções de Agrupamento")
     agrupamento_input = st.radio(
-        f"Deseja que os dados dos {len(produtos_para_agrupar_nomes)} produtos {nome_nivel} sejam agrupados?",
+        f"Deseja que os dados dos {total_selecionado} produtos/grupos sejam agrupados?",
         ("agrupados", "separados"),
         index=0,
         horizontal=True,
@@ -446,6 +436,7 @@ if len(produtos_para_agrupar_nomes) > 1:
 else:
     agrupado = False
     st.header("2. Gerar Análise")
+# --- FIM ALTERADO ---
 
 # --- Inicialização do Session State ---
 if 'arquivos_gerados_produto' not in st.session_state:
@@ -459,11 +450,13 @@ if st.button("Iniciar Análise por Produto"):
     
     with st.spinner(f"Processando dados de produto..."):
         try:
-            codigos_sh6_selecionados = [s.split(" - ")[0] for s in sh6_selecionados_nomes]
+            # --- ALTERADO: Coleta todos os códigos selecionados ---
+            codigos_sh2_selecionados = [s.split(" - ")[0] for s in sh2_selecionados_nomes]
             codigos_sh4_selecionados = [s.split(" - ")[0] for s in sh4_selecionados_nomes]
+            codigos_sh6_selecionados = [s.split(" - ")[0] for s in sh6_selecionados_nomes]
             
-            if not codigos_sh6_selecionados and not codigos_sh4_selecionados:
-                st.error("Nenhum produto (SH4 ou SH6) selecionado.")
+            if not codigos_sh2_selecionados and not codigos_sh4_selecionados and not codigos_sh6_selecionados:
+                st.error("Nenhum produto (SH2, SH4 ou SH6) selecionado.")
                 st.stop()
             
             codigos_paises_selecionados = [mapa_paises_reverso[nome] for nome in paises_selecionados_nomes]
@@ -494,47 +487,60 @@ if st.button("Iniciar Análise por Produto"):
                 nome_periodo = f"o ano de {ano_principal} (completo)"
                 nome_periodo_comp = f"o mesmo período de {ano_comparacao}"
             
-            # Adiciona colunas SH4 e SH6
+            # --- ALTERADO: Adiciona coluna SH2 ---
+            df_exp_princ['SH2'] = df_exp_princ['CO_NCM'].apply(get_sh2)
+            df_exp_comp['SH2'] = df_exp_comp['CO_NCM'].apply(get_sh2)
+            df_imp_princ['SH2'] = df_imp_princ['CO_NCM'].apply(get_sh2)
+            df_imp_comp['SH2'] = df_imp_comp['CO_NCM'].apply(get_sh2)
+            
             df_exp_princ['SH4'] = df_exp_princ['CO_NCM'].apply(get_sh4)
             df_exp_comp['SH4'] = df_exp_comp['CO_NCM'].apply(get_sh4)
             df_imp_princ['SH4'] = df_imp_princ['CO_NCM'].apply(get_sh4)
             df_imp_comp['SH4'] = df_imp_comp['CO_NCM'].apply(get_sh4)
+            
             df_exp_princ['SH6'] = df_exp_princ['CO_NCM'].apply(get_sh6)
             df_exp_comp['SH6'] = df_exp_comp['CO_NCM'].apply(get_sh6)
             df_imp_princ['SH6'] = df_imp_princ['CO_NCM'].apply(get_sh6)
             df_imp_comp['SH6'] = df_imp_comp['CO_NCM'].apply(get_sh6)
             
-
-            # Lógica de Loop (Agrupado vs Separado)
+            # --- Lógica de Loop (Agrupado vs Separado) ---
             if agrupado:
-                if codigos_sh6_selecionados:
-                    codigos_loop = codigos_sh6_selecionados
-                    nomes_base_loop = sh6_selecionados_nomes
-                    nivel_filtro = "SH6"
-                else:
-                    codigos_loop = codigos_sh4_selecionados
-                    nomes_base_loop = sh4_selecionados_nomes
-                    nivel_filtro = "SH4"
-                
-                nome_grupo = nome_agrupamento if (nome_agrupamento and nome_agrupamento.strip() != "") else ", ".join([p.split(' - ')[1] for p in nomes_base_loop])
-                produtos_para_processar = [{"nome": nome_grupo, "codigos": codigos_loop, "nivel": nivel_filtro}]
-
+                nome_grupo = nome_agrupamento if (nome_agrupamento and nome_agrupamento.strip() != "") else ", ".join([p.split(' - ')[1] for p in produtos_para_agrupar_nomes])
+                # Agrupa todos os códigos selecionados em um único item de processamento
+                produtos_para_processar = [{
+                    "nome": nome_grupo,
+                    "codigos_sh2": codigos_sh2_selecionados,
+                    "codigos_sh4": codigos_sh4_selecionados,
+                    "codigos_sh6": codigos_sh6_selecionados,
+                    "nomes_originais": produtos_para_agrupar_nomes # Para o expander
+                }]
             else:
+                # Cria um item de processamento para CADA produto selecionado
                 produtos_para_processar = []
-                if codigos_sh6_selecionados:
-                    for nome_completo in sh6_selecionados_nomes:
-                        produtos_para_processar.append({
-                            "nome": nome_completo,
-                            "codigos": [nome_completo.split(" - ")[0]],
-                            "nivel": "SH6"
-                        })
-                elif codigos_sh4_selecionados:
-                     for nome_completo in sh4_selecionados_nomes:
-                        produtos_para_processar.append({
-                            "nome": nome_completo,
-                            "codigos": [nome_completo.split(" - ")[0]],
-                            "nivel": "SH4"
-                        })
+                for nome_completo in sh2_selecionados_nomes:
+                    produtos_para_processar.append({
+                        "nome": nome_completo,
+                        "codigos_sh2": [nome_completo.split(" - ")[0]],
+                        "codigos_sh4": [],
+                        "codigos_sh6": [],
+                        "nomes_originais": [nome_completo]
+                    })
+                for nome_completo in sh4_selecionados_nomes:
+                    produtos_para_processar.append({
+                        "nome": nome_completo,
+                        "codigos_sh2": [],
+                        "codigos_sh4": [nome_completo.split(" - ")[0]],
+                        "codigos_sh6": [],
+                        "nomes_originais": [nome_completo]
+                    })
+                for nome_completo in sh6_selecionados_nomes:
+                    produtos_para_processar.append({
+                        "nome": nome_completo,
+                        "codigos_sh2": [],
+                        "codigos_sh4": [],
+                        "codigos_sh6": [nome_completo.split(" - ")[0]],
+                        "nomes_originais": [nome_completo]
+                    })
             
             # Loop principal de processamento
             for produto_info in produtos_para_processar:
@@ -548,7 +554,7 @@ if st.button("Iniciar Análise por Produto"):
                     produto_nome_doc = f"de {produto_info['nome']}"
                 else:
                     st.subheader(f"Análise de: {produto_info['nome']}")
-                    nome_limpo_arquivo = sanitize_filename(produto_info['nome'].split(" - ")[1])
+                    nome_limpo_arquivo = sanitize_filename(produto_info['nome'].split(" - ")[1]) # Pega só o nome
                     titulo_doc = f"Briefing - {nome_limpo_arquivo} - {ano_principal}"
                     produto_nome_doc = f"de {produto_info['nome'].split(' - ')[1]}"
                 
@@ -557,13 +563,20 @@ if st.button("Iniciar Análise por Produto"):
                 # --- Processamento Exportação ---
                 st.header("Principais Destinos (Exportação de MG)")
                 
+                # Filtro base
                 df_exp_princ_base = df_exp_princ[(df_exp_princ['SG_UF_NCM'] == 'MG') & (df_exp_princ['CO_MES'].isin(meses_para_filtrar))]
                 df_exp_comp_base = df_exp_comp[(df_exp_comp['SG_UF_NCM'] == 'MG') & (df_exp_comp['CO_MES'].isin(meses_para_filtrar))]
 
-                nivel_filtro = produto_info['nivel']
-                codigos_filtro = produto_info['codigos']
-                df_exp_princ_f = df_exp_princ_base[df_exp_princ_base[nivel_filtro].isin(codigos_filtro)]
-                df_exp_comp_f = df_exp_comp_base[df_exp_comp_base[nivel_filtro].isin(codigos_filtro)]
+                # --- ALTERADO: Lógica de filtragem OR ---
+                filtro_sh2 = df_exp_princ_base['SH2'].isin(produto_info['codigos_sh2'])
+                filtro_sh4 = df_exp_princ_base['SH4'].isin(produto_info['codigos_sh4'])
+                filtro_sh6 = df_exp_princ_base['SH6'].isin(produto_info['codigos_sh6'])
+                df_exp_princ_f = df_exp_princ_base[filtro_sh2 | filtro_sh4 | filtro_sh6]
+
+                filtro_sh2_comp = df_exp_comp_base['SH2'].isin(produto_info['codigos_sh2'])
+                filtro_sh4_comp = df_exp_comp_base['SH4'].isin(produto_info['codigos_sh4'])
+                filtro_sh6_comp = df_exp_comp_base['SH6'].isin(produto_info['codigos_sh6'])
+                df_exp_comp_f = df_exp_comp_base[filtro_sh2_comp | filtro_sh4_comp | filtro_sh6_comp]
                 
                 if codigos_paises_selecionados:
                     df_exp_princ_f = df_exp_princ_f[df_exp_princ_f['CO_PAIS'].isin(codigos_paises_selecionados)]
@@ -594,35 +607,43 @@ if st.button("Iniciar Análise por Produto"):
                 
                 df_display_exp = exp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).reset_index(drop=True)
                 
-                # --- ALTERADO: Usa .head(top_n_paises) ---
                 st.dataframe(
                     df_display_exp[['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']].head(top_n_paises),
                     hide_index=True
                 )
                 
-                # --- NOVO: Lógica do Expander para Agrupado (Exportação) ---
+                # --- ALTERADO: Lógica do Expander para Agrupado (Exportação) ---
                 if agrupado:
                     with st.expander("Ver detalhamento de produtos por país (Exportação)"):
-                        # Pega os Top N países da tabela principal
                         top_paises_lista = df_display_exp['País'].head(top_n_paises).tolist()
+                        
+                        # --- NOVO: Mapeamento de hierarquia ---
+                        # Criar uma função para mapear NCM ao produto selecionado
+                        def map_produto_selecionado(row):
+                            sh6 = row['SH6']
+                            sh4 = row['SH4']
+                            sh2 = row['SH2']
+                            if sh6 in produto_info['codigos_sh6']:
+                                return mapa_sh6_nomes.get(sh6, sh6)
+                            if sh4 in produto_info['codigos_sh4']:
+                                return mapa_sh4_nomes.get(sh4, sh4)
+                            if sh2 in produto_info['codigos_sh2']:
+                                return mapa_sh2_nomes.get(sh2, sh2)
+                            return "Outros" # Caso de agregação (ex: SH2 inclui SH4 selecionado)
 
-                        # Mapeia nomes de produtos
-                        mapa_produto = mapa_sh6_nomes if nivel_filtro == 'SH6' else mapa_sh4_nomes
-                        df_exp_princ_f['Produto'] = df_exp_princ_f[nivel_filtro].map(mapa_produto).fillna("Desconhecido")
-                        df_exp_comp_f['Produto'] = df_exp_comp_f[nivel_filtro].map(mapa_produto).fillna("Desconhecido")
+                        df_exp_princ_f['Produto'] = df_exp_princ_f.apply(map_produto_selecionado, axis=1)
+                        df_exp_comp_f['Produto'] = df_exp_comp_f.apply(map_produto_selecionado, axis=1)
+                        # --- FIM NOVO ---
 
-                        # Agrupa por País e Produto
                         detalhe_exp_princ = df_exp_princ_f.groupby(['CO_PAIS', 'Produto'])['VL_FOB'].sum().reset_index()
                         detalhe_exp_comp = df_exp_comp_f.groupby(['CO_PAIS', 'Produto'])['VL_FOB'].sum().reset_index()
                         
                         detalhe_exp_princ['País'] = detalhe_exp_princ['CO_PAIS'].map(mapa_nomes_paises)
                         detalhe_exp_comp['País'] = detalhe_exp_comp['CO_PAIS'].map(mapa_nomes_paises)
 
-                        # Renomeia colunas
                         detalhe_exp_princ = detalhe_exp_princ.rename(columns={'VL_FOB': f'Valor {ano_principal} (US$)'})
                         detalhe_exp_comp = detalhe_exp_comp.rename(columns={'VL_FOB': f'Valor {ano_comparacao} (US$)'})
 
-                        # Merge
                         detalhe_exp_final = pd.merge(
                             detalhe_exp_princ[['País', 'Produto', f'Valor {ano_principal} (US$)']],
                             detalhe_exp_comp[['País', 'Produto', f'Valor {ano_comparacao} (US$)']],
@@ -630,26 +651,21 @@ if st.button("Iniciar Análise por Produto"):
                             how='outer'
                         ).fillna(0)
 
-                        # Filtra apenas para os Top N Países
                         detalhe_exp_final = detalhe_exp_final[detalhe_exp_final['País'].isin(top_paises_lista)]
 
-                        # Calcula Variação
                         detalhe_exp_final['Variação %'] = 100 * (detalhe_exp_final[f'Valor {ano_principal} (US$)'] - detalhe_exp_final[f'Valor {ano_comparacao} (US$)']) / detalhe_exp_final[f'Valor {ano_comparacao} (US$)']
                         detalhe_exp_final['Variação %'] = detalhe_exp_final['Variação %'].replace([float('inf'), float('-inf')], 0).fillna(0).round(2)
                         
-                        # Formata valores
                         detalhe_exp_final[f'Valor {ano_principal}'] = detalhe_exp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
                         detalhe_exp_final[f'Valor {ano_comparacao}'] = detalhe_exp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
 
-                        # Ordena e exibe
                         detalhe_exp_final = detalhe_exp_final.sort_values(by=['País', f'Valor {ano_principal} (US$)'], ascending=[True, False])
                         st.dataframe(
                             detalhe_exp_final[['País', 'Produto', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']],
                             hide_index=True
                         )
-                # --- FIM NOVO ---
+                # --- FIM ALTERADO ---
                 
-                # --- Geração de Texto (Exportação) ---
                 texto_exp_total = f"Em {nome_periodo}, as exportações de Minas Gerais {produto_nome_doc} somaram {formatar_valor(exp_total_princ)}, {tipo_dif_exp} de {dif_exp:.1f}% em relação a {nome_periodo_comp}."
                 app.nova_secao()
                 app.adicionar_titulo("Exportações de Produto")
@@ -669,8 +685,16 @@ if st.button("Iniciar Análise por Produto"):
                 df_imp_princ_base = df_imp_princ[(df_imp_princ['SG_UF_NCM'] == 'MG') & (df_imp_princ['CO_MES'].isin(meses_para_filtrar))]
                 df_imp_comp_base = df_imp_comp[(df_imp_comp['SG_UF_NCM'] == 'MG') & (df_imp_comp['CO_MES'].isin(meses_para_filtrar))]
 
-                df_imp_princ_f = df_imp_princ_base[df_imp_princ_base[nivel_filtro].isin(codigos_filtro)]
-                df_imp_comp_f = df_imp_comp_base[df_imp_comp_base[nivel_filtro].isin(codigos_filtro)]
+                # --- ALTERADO: Lógica de filtragem OR ---
+                filtro_sh2 = df_imp_princ_base['SH2'].isin(produto_info['codigos_sh2'])
+                filtro_sh4 = df_imp_princ_base['SH4'].isin(produto_info['codigos_sh4'])
+                filtro_sh6 = df_imp_princ_base['SH6'].isin(produto_info['codigos_sh6'])
+                df_imp_princ_f = df_imp_princ_base[filtro_sh2 | filtro_sh4 | filtro_sh6]
+
+                filtro_sh2_comp = df_imp_comp_base['SH2'].isin(produto_info['codigos_sh2'])
+                filtro_sh4_comp = df_imp_comp_base['SH4'].isin(produto_info['codigos_sh4'])
+                filtro_sh6_comp = df_imp_comp_base['SH6'].isin(produto_info['codigos_sh6'])
+                df_imp_comp_f = df_imp_comp_base[filtro_sh2_comp | filtro_sh4_comp | filtro_sh6_comp]
                 
                 if codigos_paises_selecionados:
                     df_imp_princ_f = df_imp_princ_f[df_imp_princ_f['CO_PAIS'].isin(codigos_paises_selecionados)]
@@ -701,20 +725,30 @@ if st.button("Iniciar Análise por Produto"):
 
                 df_display_imp = imp_final.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).reset_index(drop=True)
                 
-                # --- ALTERADO: Usa .head(top_n_paises) ---
                 st.dataframe(
                     df_display_imp[['País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']].head(top_n_paises),
                     hide_index=True
                 )
                 
-                # --- NOVO: Lógica do Expander para Agrupado (Importação) ---
+                # --- ALTERADO: Lógica do Expander para Agrupado (Importação) ---
                 if agrupado:
                     with st.expander("Ver detalhamento de produtos por país (Importação)"):
                         top_paises_lista_imp = df_display_imp['País'].head(top_n_paises).tolist()
+                        
+                        def map_produto_selecionado_imp(row):
+                            sh6 = row['SH6']
+                            sh4 = row['SH4']
+                            sh2 = row['SH2']
+                            if sh6 in produto_info['codigos_sh6']:
+                                return mapa_sh6_nomes.get(sh6, sh6)
+                            if sh4 in produto_info['codigos_sh4']:
+                                return mapa_sh4_nomes.get(sh4, sh4)
+                            if sh2 in produto_info['codigos_sh2']:
+                                return mapa_sh2_nomes.get(sh2, sh2)
+                            return "Outros"
 
-                        mapa_produto = mapa_sh6_nomes if nivel_filtro == 'SH6' else mapa_sh4_nomes
-                        df_imp_princ_f['Produto'] = df_imp_princ_f[nivel_filtro].map(mapa_produto).fillna("Desconhecido")
-                        df_imp_comp_f['Produto'] = df_imp_comp_f[nivel_filtro].map(mapa_produto).fillna("Desconhecido")
+                        df_imp_princ_f['Produto'] = df_imp_princ_f.apply(map_produto_selecionado_imp, axis=1)
+                        df_imp_comp_f['Produto'] = df_imp_comp_f.apply(map_produto_selecionado_imp, axis=1)
 
                         detalhe_imp_princ = df_imp_princ_f.groupby(['CO_PAIS', 'Produto'])['VL_FOB'].sum().reset_index()
                         detalhe_imp_comp = df_imp_comp_f.groupby(['CO_PAIS', 'Produto'])['VL_FOB'].sum().reset_index()
@@ -745,9 +779,8 @@ if st.button("Iniciar Análise por Produto"):
                             detalhe_imp_final[['País', 'Produto', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']],
                             hide_index=True
                         )
-                # --- FIM NOVO ---
+                # --- FIM ALTERADO ---
                 
-                # --- Geração de Texto (Importação) ---
                 texto_imp_total = f"Em {nome_periodo}, as importações de Minas Gerais {produto_nome_doc} somaram {formatar_valor(imp_total_princ)}, {tipo_dif_imp} de {dif_imp:.1f}% em relação a {nome_periodo_comp}."
                 
                 app.nova_secao()
@@ -766,7 +799,6 @@ if st.button("Iniciar Análise por Produto"):
                 file_bytes, file_name = app.finalizar_documento()
                 st.session_state.arquivos_gerados_produto.append({"name": file_name, "data": file_bytes})
             
-            # Limpa os DFs principais da memória após o loop
             del df_exp_princ, df_exp_comp, df_imp_princ, df_imp_comp
 
         except Exception as e:
@@ -779,7 +811,6 @@ if st.session_state.arquivos_gerados_produto:
     st.info("Clique para baixar os relatórios. Eles permanecerão aqui até que você gere um novo relatório.")
     
     if len(st.session_state.arquivos_gerados_produto) > 1:
-        # Caso "Separados": Criar um ZIP
         st.subheader("Pacote de Relatórios (ZIP)")
         
         zip_buffer = io.BytesIO()
@@ -798,7 +829,6 @@ if st.session_state.arquivos_gerados_produto:
         )
         
     elif len(st.session_state.arquivos_gerados_produto) == 1:
-        # Caso "Agrupado": Botão único
         st.subheader("Relatório Gerado")
         arquivo = st.session_state.arquivos_gerados_produto[0] 
         st.download_button(
