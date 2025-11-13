@@ -4,16 +4,15 @@ import requests
 from io import StringIO
 from urllib3.exceptions import InsecureRequestWarning
 import os
-from datetime import datetime, timezone
-import calendar
+from datetime import datetime
+import io
+import re
+import zipfile
 from docx import Document
 from docx.shared import Cm, Pt, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-import re
-import io
-import zipfile
 
 # --- Bloco da Logo na Sidebar ---
 logo_sidebar_path = "LogoMinasGerais.png"
@@ -50,11 +49,10 @@ ARTIGOS_PAISES_MAP = {
 }
 
 # --- BLOCO MANUAL DE BLOCOS ECONÔMICOS ---
-#
+# 
 # ⚠️ ATENÇÃO: VERIFIQUE ESTES NOMES!
-# Os nomes dos países abaixo são palpites. Se o filtro de bloco não funcionar,
-# é porque o nome no arquivo PAIS.csv é diferente (ex: "Países Baixos" vs "Holanda").
-# Você DEVE ajustar esta lista para bater 100% com o arquivo PAIS.csv.
+# Os nomes dos países abaixo DEVEM corresponder exatamente aos nomes
+# que estão no arquivo PAIS.csv (coluna NO_PAIS)
 #
 BLOCOS_ECONOMICOS = {
     "América Central e Caribe": [
@@ -124,7 +122,6 @@ BLOCOS_ECONOMICOS = {
 }
 # --- FIM DO BLOCO MANUAL ---
 
-
 NCM_COLS = ['VL_FOB', 'CO_PAIS', 'CO_MES', 'SG_UF_NCM', 'CO_NCM']
 NCM_DTYPES = {'CO_NCM': str, 'CO_SH4': str} 
 MUN_COLS = ['VL_FOB', 'CO_PAIS', 'CO_MES', 'SG_UF_MUN', 'CO_MUN']
@@ -179,27 +176,22 @@ def carregar_dataframe(url, nome_arquivo, usecols=None, dtypes=None, mostrar_pro
 
 @st.cache_data
 def obter_dados_paises():
-    # --- CORREÇÃO APLICADA: Carrega SOMENTE as colunas necessárias ---
-    # Isso evita o erro se 'NO_BLOCO_GR' ou outra não existir
     url_pais = "https://balanca.economia.gov.br/balanca/bd/tabelas/PAIS.csv"
     df_pais = carregar_dataframe(url_pais, "PAIS.csv", usecols=['NO_PAIS', 'CO_PAIS'], mostrar_progresso=False) 
-    # --- FIM DA CORREÇÃO ---
     if df_pais is not None and not df_pais.empty:
         return df_pais
     return None
 
-# --- FUNÇÕES DE BLOCO CORRIGIDAS (AGORA MANUAIS) ---
+# --- FUNÇÕES DE BLOCO CORRIGIDAS (MANUAIS) ---
 @st.cache_data
 def obter_lista_de_blocos():
     """Retorna uma lista de nomes de blocos econômicos (hardcoded)."""
-    # Lê as chaves do nosso dicionário manual
     blocos = sorted(list(BLOCOS_ECONOMICOS.keys()))
     return blocos
 
 @st.cache_data
 def obter_paises_do_bloco(nome_bloco):
     """Retorna uma lista de nomes de países (hardcoded) para um bloco específico."""
-    # Retorna a lista de países do nosso dicionário manual
     return BLOCOS_ECONOMICOS.get(nome_bloco, [])
 # --- FIM DAS FUNÇÕES CORRIGIDAS ---
 
@@ -209,7 +201,6 @@ def obter_lista_de_paises():
         lista_paises = df_pais[df_pais['NO_PAIS'] != "Brasil"]['NO_PAIS'].unique().tolist()
         lista_paises.sort()
         return lista_paises
-    # Retorno seguro para evitar que o st.multiselect quebre
     return ["Erro ao carregar lista de países"] 
 
 def obter_codigo_pais(nome_pais):
@@ -516,10 +507,18 @@ def clear_download_state_pais():
 # --- ENTRADAS PRINCIPAIS ---
 st.header("1. Configurações da Análise")
 
-# --- LÓGICA DE CARREGAMENTO DAS LISTAS ---
+# --- AVISO SOBRE LISTAS MANUAIS ---
+st.warning(
+    "⚠️ **Atenção:** As listas de países para os **Blocos Econômicos** "
+    "são definidas manually no código-fonte (variável `BLOCOS_ECONOMICOS`). "
+    "**Verifique se os nomes dos países nas listas correspondem** "
+    "exatamente aos nomes no arquivo `PAIS.csv` da Comex Stat."
+)
+# --- FIM DO AVISO ---
+
 try:
     lista_de_paises = obter_lista_de_paises()
-    lista_de_blocos = obter_lista_de_blocos() # Agora lê do dicionário manual
+    lista_de_blocos = obter_lista_de_blocos()
 except Exception as e:
     st.error(f"Erro crítico ao carregar listas iniciais: {e}")
     lista_de_paises = ["Falha ao carregar países"]
@@ -528,14 +527,12 @@ except Exception as e:
 # --- Lógica de 'default' resiliente ---
 valores_padrao = ["China", "Estados Unidos"]
 valores_padrao_filtrados = [pais for pais in valores_padrao if pais in lista_de_paises]
-
 if not valores_padrao_filtrados and len(lista_de_paises) > 0 and "Erro" not in lista_de_paises[0]:
     valores_padrao_filtrados = [lista_de_paises[0]]
 elif "Erro" in lista_de_paises[0] or "Falha" in lista_de_paises[0]:
     valores_padrao_filtrados = [] 
     st.warning("Não foi possível carregar a lista de países. O site de dados pode estar fora do ar.")
 # --- FIM DA LÓGICA ---
-
 
 ano_atual = datetime.now().year
 
@@ -567,7 +564,7 @@ with col1:
 with col2:
     blocos_selecionados = st.multiselect(
         "Filtrar por Bloco(s) (opcional):",
-        options=lista_de_blocos, # Populado pelo dicionário manual
+        options=lista_de_blocos,
         help="Os países destes blocos serão adicionados à seleção.",
         on_change=clear_download_state_pais
     )
@@ -575,26 +572,21 @@ with col2:
     paises_selecionados_manual = st.multiselect(
         "Filtrar por País(es) (opcional):",
         options=lista_de_paises,
-        default=valores_padrao_filtrados, # Usa a lista filtrada e segura
+        default=valores_padrao_filtrados,
         help="Você pode digitar para pesquisar e selecionar múltiplos países.",
         on_change=clear_download_state_pais
     )
-
 
 # --- LÓGICA CONDICIONAL PARA ENTRADAS ---
 agrupado = True 
 nome_agrupamento = None
 
-# --- LÓGICA DE COMBINAÇÃO DE FILTROS ---
 paises_do_bloco = []
 if blocos_selecionados:
     for bloco in blocos_selecionados:
-        paises_do_bloco.extend(obter_paises_do_bloco(bloco)) # Lê do dicionário
+        paises_do_bloco.extend(obter_paises_do_bloco(bloco))
 
-# Combina as duas listas e remove duplicatas
 paises = sorted(list(set(paises_selecionados_manual + paises_do_bloco)))
-# --- FIM DA LÓGICA DE COMBINAÇÃO ---
-
 
 if len(paises) > 1:
     st.header("2. Opções de Agrupamento")
@@ -614,6 +606,14 @@ if len(paises) > 1:
         agrupado = (agrupamento_input == "agrupados")
 
         if agrupado:
+            # --- INSERÇÃO DA DICA (PAÍSES) ---
+            st.info(
+                "💡 **Como funciona o agrupamento:**\n"
+                "* **Agrupados:** Gerará um **único relatório** consolidado, somando os dados de todos os países selecionados.\n"
+                "* **Separados:** Gerará um **relatório individual** para cada país. Se vários países forem selecionados, o download será um arquivo .zip."
+            )
+            # --- FIM DA INSERÇÃO ---
+            
             quer_nome_agrupamento = st.checkbox(
                 "Deseja dar um nome para este agrupamento?", 
                 key="pais_nome_grupo",
@@ -644,7 +644,6 @@ if st.button(" Iniciar Geração do Relatório"):
     with st.spinner(f"Gerando relatório para {', '.join(paises)} ({ano_principal} vs {ano_comparacao})... Isso pode levar alguns minutos."):
         
         try:
-            # --- Validação de Países ---
             codigos_paises, nomes_paises_validos, paises_invalidos = validar_paises(paises)
             if paises_invalidos:
                 st.warning(f"Países não encontrados ou inválidos (ignorados): {', '.join(paises_invalidos)}")
@@ -652,25 +651,22 @@ if st.button(" Iniciar Geração do Relatório"):
                 st.error("Nenhum país válido fornecido. A geração foi interrompida.")
                 st.stop()
             
-            # --- URLs ---
             url_exp_ano_principal = f"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/ncm/EXP_{ano_principal}.csv"
             url_exp_ano_comparacao = f"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/ncm/EXP_{ano_comparacao}.csv"
             url_imp_ano_principal = f"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/ncm/IMP_{ano_principal}.csv"
             url_imp_ano_comparacao = f"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/ncm/IMP_{ano_comparacao}.csv"
-            url_ncm = "https://balanca.economia.gov.br/balanca/bd/tabelas/NCM_SH.csv"
+            url_ncm_sh = "https://balanca.economia.gov.br/balanca/bd/tabelas/NCM_SH.csv"
             url_exp_mun_principal = f"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/mun/EXP_{ano_principal}_MUN.csv"
             url_imp_mun_principal = f"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/mun/IMP_{ano_principal}_MUN.csv"
             url_uf_mun = "https://balanca.economia.gov.br/balanca/bd/tabelas/UF_MUN.csv"
             
-            # --- 1. Carregar dados comuns (pequenos) ---
-            df_ncm = carregar_dataframe(url_ncm, "NCM_SH.csv", usecols=['CO_SH4', 'NO_SH4_POR'], mostrar_progresso=False)
+            df_ncm = carregar_dataframe(url_ncm_sh, "NCM_SH.csv", usecols=['CO_SH4', 'NO_SH4_POR'], mostrar_progresso=False)
             df_uf_mun = carregar_dataframe(url_uf_mun, "UF_MUN.csv", usecols=['CO_MUN_GEO', 'NO_MUN_MIN'], mostrar_progresso=False)
             
             if df_ncm is None or df_uf_mun is None:
                 st.error("Não foi possível carregar tabelas auxiliares (NCM ou Municípios). Abortando.")
                 st.stop()
 
-            # --- 2. Bloco de Exportação ---
             df_exp_ano = carregar_dataframe(url_exp_ano_principal, f"EXP_{ano_principal}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
             df_exp_ano_anterior = carregar_dataframe(url_exp_ano_comparacao, f"EXP_{ano_comparacao}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
 
@@ -678,7 +674,6 @@ if st.button(" Iniciar Geração do Relatório"):
                 st.error("Não foi possível carregar dados de exportação. Verifique os anos selecionados ou tente novamente mais tarde.")
                 st.stop()
 
-            # --- Lógica de Meses ---
             ultimo_mes_disponivel = df_exp_ano['CO_MES'].max()
             meses_para_filtrar = []
             
@@ -696,9 +691,6 @@ if st.button(" Iniciar Geração do Relatório"):
                 nome_periodo_em = f"No período de {', '.join(meses_selecionados)} de {ano_principal}"
                 nome_periodo_comp = f"o mesmo período de {ano_comparacao}"
             
-            # --- Fim da Lógica de Meses ---
-
-            # Cálculos NCM Exportação
             df_exp_ano_estados = filtrar_dados_por_estado_e_mes(df_exp_ano, estados_brasileiros, meses_para_filtrar)
             df_exp_ano_anterior_estados = filtrar_dados_por_estado_e_mes(df_exp_ano_anterior, estados_brasileiros, meses_para_filtrar)
             df_exp_ano_mg = filtrar_dados_por_estado_e_mes(df_exp_ano, ['MG'], meses_para_filtrar)
@@ -717,7 +709,6 @@ if st.button(" Iniciar Geração do Relatório"):
                 posicao_pais_mg_exp = None
             
             exportacao_mg_total_ano = df_exp_ano_mg['VL_FOB'].sum()
-
             participacao_pais_mg_exp = calcular_participacao(exportacao_pais_ano, exportacao_mg_total_ano)
             diferenca_exportacao, tipo_diferenca_exp = calcular_diferenca_percentual(exportacao_pais_ano, exportacao_pais_ano_anterior)
             
@@ -728,7 +719,6 @@ if st.button(" Iniciar Geração do Relatório"):
             posicao_mg_pais_exp = calcular_posicao_estado_pais(df_exp_ano_estados, codigos_paises)
             produtos_exportacao = agregar_dados_por_produto(df_exp_ano_mg_paises.copy(), df_ncm)
             
-            # --- 2b. Municípios Exportação ---
             df_exp_mun = carregar_dataframe(url_exp_mun_principal, f"EXP_{ano_principal}_MUN.csv", usecols=MUN_COLS, dtypes=MUN_DTYPES)
             if df_exp_mun is None:
                 st.error("Não foi possível carregar dados de exportação por município. Abortando.")
@@ -737,10 +727,8 @@ if st.button(" Iniciar Geração do Relatório"):
             df_exp_mun_filtrado = df_exp_mun[(df_exp_mun['SG_UF_MUN'] == 'MG') & (df_exp_mun['CO_PAIS'].isin(codigos_paises)) & (df_exp_mun['CO_MES'].isin(meses_para_filtrar))]
             exportacoes_por_municipio, total_exportacoes_municipios = agregar_dados_por_municipio(df_exp_mun_filtrado)
             
-            # --- 3. Liberar Memória (Exportação) ---
             del df_exp_ano, df_exp_ano_anterior, df_exp_ano_estados, df_exp_ano_anterior_estados, df_exp_ano_mg, df_exp_ano_mg_paises, df_exp_ano_anterior_mg_paises, df_exp_mun, df_exp_mun_filtrado
             
-            # --- 4. Bloco de Importação ---
             df_imp_ano = carregar_dataframe(url_imp_ano_principal, f"IMP_{ano_principal}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
             df_imp_ano_anterior = carregar_dataframe(url_imp_ano_comparacao, f"IMP_{ano_comparacao}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
             
@@ -766,7 +754,6 @@ if st.button(" Iniciar Geração do Relatório"):
                 posicao_pais_mg_imp = None
             
             importacao_mg_total_ano = df_imp_ano_mg['VL_FOB'].sum()
-
             participacao_pais_mg_imp = calcular_participacao(importacao_pais_ano, importacao_mg_total_ano)
             diferenca_importacao, tipo_diferenca_imp = calcular_diferenca_percentual(importacao_pais_ano, importacao_pais_ano_anterior)
             
@@ -787,17 +774,13 @@ if st.button(" Iniciar Geração do Relatório"):
             
             del df_imp_ano, df_imp_ano_anterior, df_imp_ano_estados, df_imp_ano_anterior_estados, df_imp_ano_mg, df_imp_ano_mg_paises, df_imp_ano_anterior_mg_paises, df_imp_mun, df_imp_mun_filtrado
 
-            # --- 6. Bloco de Cálculo Final (Balança/Fluxo) ---
             balanca_ano, balanca_ano_anterior, fluxo_comercial_ano, fluxo_comercial_ano_anterior, variacao_balanca, variacao_fluxo = calcular_balanca_e_fluxo(exportacao_pais_ano, importacao_pais_ano, exportacao_pais_ano_anterior, importacao_pais_ano_anterior)
             
-            # --- 7. Geração de Texto e Documento ---
             if agrupado:
-                # --- LÓGICA PARA AGRUPADOS ---
                 app = DocumentoApp(logo_path=logo_path_to_use)
                 paises_corretos = nomes_paises_validos 
                 nome_relatorio = nome_agrupamento if (nome_agrupamento and nome_agrupamento.strip() != "") else ', '.join(paises_corretos)
 
-                # --- Geração de Texto ... ---
                 fluxo_e_balanca = f"Considerando {nome_periodo}, Minas Gerais e {nome_relatorio} tiveram um fluxo comercial de {formatar_valor(fluxo_comercial_ano)}, representando {'aumento' if variacao_fluxo > 0 else 'queda'} de {abs(variacao_fluxo):.2f}% em comparação com {nome_periodo_comp}. A balança comercial fechou {'positiva' if balanca_ano > 0 else 'negativa'} para Minas Gerais em {formatar_valor(balanca_ano)}, apresentando {'um crescimento' if variacao_balanca > 0 else 'uma queda'} de {abs(variacao_balanca):.1f}% em relação a {nome_periodo_comp}."
                 texto_exportacao = f"As exportações mineiras para {nome_relatorio} somaram {formatar_valor(exportacao_pais_ano)} neste período, {tipo_diferenca_exp} de {diferenca_exportacao:.1f}% em relação a {nome_periodo_comp}. A participação de {nome_relatorio} nas exportações totais de Minas Gerais no período foi equivalente a {participacao_pais_mg_exp}%. "
                 
@@ -814,7 +797,6 @@ if st.button(" Iniciar Geração do Relatório"):
                     texto_municipios_exportacao_lista = []
                     for i, (codigo_municipio, valor_fob) in enumerate(exportacoes_por_municipio.head(5).items()):
                         try:
-                            # CORREÇÃO: Converter 'codigo_municipio' (str) para int para bater com 'CO_MUN_GEO' (int)
                             nome_municipio = df_uf_mun[df_uf_mun['CO_MUN_GEO'] == int(codigo_municipio)]['NO_MUN_MIN'].iloc[0]
                         except:
                             nome_municipio = f"Município ({codigo_municipio})"
@@ -837,7 +819,6 @@ if st.button(" Iniciar Geração do Relatório"):
                     texto_municipios_importacao_lista = []
                     for i, (codigo_municipio, valor_fob) in enumerate(importacoes_por_municipio.head(5).items()):
                         try:
-                            # CORREÇÃO: Converter 'codigo_municipio' (str) para int
                             nome_municipio = df_uf_mun[df_uf_mun['CO_MUN_GEO'] == int(codigo_municipio)]['NO_MUN_MIN'].iloc[0]
                         except:
                             nome_municipio = f"Município ({codigo_municipio})"
@@ -845,7 +826,6 @@ if st.button(" Iniciar Geração do Relatório"):
                         texto_municipios_importacao_lista.append(f"{nome_municipio} ({participacao_municipio_importacao}%)")
                     texto_municipios_importacao += "; ".join(texto_municipios_importacao_lista) + "."
                 
-                # --- Montagem do Documento ---
                 titulo_documento = f"Briefing - {nome_relatorio} - {ano_principal}"
                 
                 app.set_titulo(titulo_documento)
@@ -873,7 +853,6 @@ if st.button(" Iniciar Geração do Relatório"):
                 st.session_state.arquivos_gerados_pais.append({"name": file_name, "data": file_bytes})
 
             else:
-                # --- LÓGICA PARA SEPARADOS ---
                 paises_corretos = nomes_paises_validos
                 
                 for pais in paises_corretos:
@@ -882,8 +861,6 @@ if st.button(" Iniciar Geração do Relatório"):
                     
                     codigos_paises_loop = [obter_codigo_pais(pais)]
 
-                    # --- 2. Bloco de Exportação (Separado) ---
-                    # Recarrega os dataframes (ou usa cache se ainda disponível)
                     df_exp_ano = carregar_dataframe(url_exp_ano_principal, f"EXP_{ano_principal}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES, mostrar_progresso=False)
                     df_exp_ano_anterior = carregar_dataframe(url_exp_ano_comparacao, f"EXP_{ano_comparacao}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES, mostrar_progresso=False)
                     if df_exp_ano is None or df_exp_ano_anterior is None:
@@ -923,7 +900,6 @@ if st.button(" Iniciar Geração do Relatório"):
                     
                     del df_exp_ano, df_exp_ano_anterior, df_exp_ano_estados, df_exp_ano_mg, df_exp_ano_mg_paises, df_exp_mun, df_exp_mun_filtrado
 
-                    # --- 4. Bloco de Importação (Separado) ---
                     df_imp_ano = carregar_dataframe(url_imp_ano_principal, f"IMP_{ano_principal}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES, mostrar_progresso=False)
                     df_imp_ano_anterior = carregar_dataframe(url_imp_ano_comparacao, f"IMP_{ano_comparacao}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES, mostrar_progresso=False)
                     if df_imp_ano is None or df_imp_ano_anterior is None:
@@ -963,13 +939,9 @@ if st.button(" Iniciar Geração do Relatório"):
                     
                     del df_imp_ano, df_imp_ano_anterior, df_imp_ano_estados, df_imp_ano_mg, df_imp_ano_mg_paises, df_imp_mun, df_imp_mun_filtrado
                     
-                    # --- 6. Cálculo Final (Separado) ---
                     balanca_ano, balanca_ano_anterior, fluxo_comercial_ano, fluxo_comercial_ano_anterior, variacao_balanca, variacao_fluxo = calcular_balanca_e_fluxo(exportacao_pais_ano, importacao_pais_ano, exportacao_pais_ano_anterior, importacao_pais_ano_anterior)
 
-                    # --- 7. Geração de Texto e Documento (Separado) ---
                     nome_pais_base = pais
-
-                    # --- ARTIGO ---
                     nome_relatorio = nome_pais_base
                     nome_relatorio_capitalizado = nome_pais_base
                     artigo = obter_artigo_pais(nome_pais_base) 
@@ -990,7 +962,6 @@ if st.button(" Iniciar Geração do Relatório"):
 
                     titulo_documento = f"Briefing - {nome_pais_base} - {ano_principal}"
                     
-                    # --- Geração de Texto ... ---
                     fluxo_e_balanca = f"Considerando {nome_periodo}, Minas Gerais e {nome_relatorio} tiveram um fluxo comercial de {formatar_valor(fluxo_comercial_ano)}, representando {'aumento' if variacao_fluxo > 0 else 'queda'} de {abs(variacao_fluxo):.2f}% em comparação com {nome_periodo_comp}. A balança comercial fechou {'positiva' if balanca_ano > 0 else 'negativa'} para Minas Gerais em {formatar_valor(balanca_ano)}, apresentando {'um crescimento' if variacao_balanca > 0 else 'uma queda'} de {abs(variacao_balanca):.1f}% em relação a {nome_periodo_comp}."
 
                     if exportacao_pais_ano > 0: 
@@ -1011,7 +982,6 @@ if st.button(" Iniciar Geração do Relatório"):
                         texto_municipios_exportacao_lista = []
                         for i, (codigo_municipio, valor_fob) in enumerate(exportacoes_por_municipio.head(5).items()):
                             try:
-                                # CORREÇÃO: Converter 'codigo_municipio' (str) para int
                                 nome_municipio = df_uf_mun[df_uf_mun['CO_MUN_GEO'] == int(codigo_municipio)]['NO_MUN_MIN'].iloc[0]
                             except:
                                 nome_municipio = f"Município ({codigo_municipio})"
@@ -1039,7 +1009,6 @@ if st.button(" Iniciar Geração do Relatório"):
                         texto_municipios_importacao_lista = []
                         for i, (codigo_municipio, valor_fob) in enumerate(importacoes_por_municipio.head(5).items()):
                             try:
-                                # CORREÇÃO: Converter 'codigo_municipio' (str) para int
                                 nome_municipio = df_uf_mun[df_uf_mun['CO_MUN_GEO'] == int(codigo_municipio)]['NO_MUN_MIN'].iloc[0]
                             except:
                                 nome_municipio = f"Município ({codigo_municipio})"
@@ -1049,7 +1018,6 @@ if st.button(" Iniciar Geração do Relatório"):
                     else: 
                         texto_importacao = f"Em {nome_periodo}, Minas Gerais não registrou importações provenientes {nome_relatorio_com_contracao}."
                     
-                    # --- Montagem do Documento ---
                     app.set_titulo(titulo_documento)
                     app.nova_secao()
                     app.adicionar_titulo("Fluxo Comercial")
@@ -1084,7 +1052,6 @@ if st.session_state.arquivos_gerados_pais:
     st.info("Clique para baixar os relatórios. Eles permanecerão aqui até que você gere um novo relatório.")
     
     if len(st.session_state.arquivos_gerados_pais) > 1:
-        # Caso "Separados": Criar um ZIP
         st.subheader("Pacote de Relatórios (ZIP)")
         
         zip_buffer = io.BytesIO()
@@ -1103,7 +1070,6 @@ if st.session_state.arquivos_gerados_pais:
         )
         
     elif len(st.session_state.arquivos_gerados_pais) == 1:
-        # Caso "Agrupado": Botão único
         st.subheader("Relatório Gerado")
         arquivo = st.session_state.arquivos_gerados_pais[0] 
         st.download_button(
