@@ -328,7 +328,6 @@ def clear_download_state_prod():
 
 # Carrega dados de Países e Produtos
 lista_de_produtos_sh2 = obter_lista_de_produtos_sh2()
-# --- ALTERADO: Carrega listas completas e independentes ---
 lista_de_produtos_sh4 = obter_lista_de_produtos_sh4()
 lista_de_produtos_sh6 = obter_lista_de_produtos_sh6()
 mapa_nomes_paises, lista_paises_nomes, mapa_paises_reverso = obter_dados_paises()
@@ -354,7 +353,7 @@ with col1:
         on_change=clear_download_state_prod 
     )
     
-    # --- NOVO: Seletor de N Países ---
+    # --- Seletor de N Países ---
     top_n_paises = st.number_input(
         "Nº de Países no Ranking:",
         min_value=1,
@@ -363,7 +362,7 @@ with col1:
         help="Quantos países devem ser exibidos nas tabelas de ranking (Top 10, Top 20, etc.).",
         on_change=clear_download_state_prod
     )
-    # --- FIM NOVO ---
+    # --- Fim Seletor ---
 
 with col2:
     paises_selecionados_nomes = st.multiselect(
@@ -373,7 +372,7 @@ with col2:
         on_change=clear_download_state_prod 
     )
 
-    # --- ALTERADO: Filtros independentes ---
+    # --- Filtros independentes ---
     sh2_selecionados_nomes = st.multiselect(
         "1. Selecione Capítulos (SH2) (opcional):",
         options=lista_de_produtos_sh2,
@@ -383,7 +382,7 @@ with col2:
     
     sh4_selecionados_nomes = st.multiselect(
         "2. Selecione Produtos (SH4) (opcional):",
-        options=lista_de_produtos_sh4, # Usa a lista completa
+        options=lista_de_produtos_sh4,
         default=[],
         help="Selecione um ou mais produtos (4 dígitos).",
         on_change=clear_download_state_prod 
@@ -391,19 +390,17 @@ with col2:
     
     sh6_selecionados_nomes = st.multiselect(
         "3. Selecione Subposições (SH6) (opcional):",
-        options=lista_de_produtos_sh6, # Usa a lista completa
+        options=lista_de_produtos_sh6,
         default=[],
         help="Selecione uma ou mais subposições (6 dígitos).",
         on_change=clear_download_state_prod
     )
-    # --- FIM ALTERADO ---
-
+    # --- Fim Filtros ---
 
 # --- Lógica de Agrupamento ---
 agrupado = True
 nome_agrupamento = None 
 
-# --- ALTERADO: Lógica de agrupamento para seleções múltiplas ---
 total_selecionado = len(sh2_selecionados_nomes) + len(sh4_selecionados_nomes) + len(sh6_selecionados_nomes)
 produtos_para_agrupar_nomes = sh2_selecionados_nomes + sh4_selecionados_nomes + sh6_selecionados_nomes
 
@@ -419,6 +416,14 @@ if total_selecionado > 1:
     agrupado = (agrupamento_input == "agrupados")
     
     if agrupado:
+        # --- INSERÇÃO DA DICA (PRODUTOS) ---
+        st.info(
+            "💡 **Como funciona o agrupamento:**\n"
+            "* **Agrupados:** Gerará um **único relatório** consolidado. As tabelas de ranking mostrarão a **soma** de todos os produtos (SH2, SH4, SH6) selecionados. O detalhamento por produto aparecerá no expansor.\n"
+            "* **Separados:** Gerará um **relatório individual** para cada item que você selecionou (ex: um relatório para o SH2, um para o SH4, etc.)."
+        )
+        # --- FIM DA INSERÇÃO ---
+        
         quer_nome_agrupamento = st.checkbox(
             "Deseja dar um nome para este agrupamento de produtos?", 
             key="prod_nome_grupo",
@@ -435,7 +440,7 @@ if total_selecionado > 1:
 else:
     agrupado = False
     st.header("2. Gerar Análise")
-# --- FIM ALTERADO ---
+# --- FIM Lógica Agrupamento ---
 
 # --- Inicialização do Session State ---
 if 'arquivos_gerados_produto' not in st.session_state:
@@ -449,7 +454,6 @@ if st.button("Iniciar Análise por Produto"):
     
     with st.spinner(f"Processando dados de produto..."):
         try:
-            # Coleta todos os códigos selecionados
             codigos_sh2_selecionados = [s.split(" - ")[0] for s in sh2_selecionados_nomes]
             codigos_sh4_selecionados = [s.split(" - ")[0] for s in sh4_selecionados_nomes]
             codigos_sh6_selecionados = [s.split(" - ")[0] for s in sh6_selecionados_nomes]
@@ -482,10 +486,9 @@ if st.button("Iniciar Análise por Produto"):
                 nome_periodo = f"o período de {', '.join(meses_selecionados)} de {ano_principal}"
                 nome_periodo_comp = f"o mesmo período de {ano_comparacao}"
             else:
-                # Usa o mês máximo disponível nos dados carregados
                 ultimo_mes_disponivel = df_exp_princ['CO_MES'].max()
                 meses_para_filtrar = list(range(1, ultimo_mes_disponivel + 1))
-                nome_periodo = f"o ano de {ano_principal} (até {MESES_MAPA.get(ultimo_mes_disponivel, ultimo_mes_disponivel)})"
+                nome_periodo = f"o ano de {ano_principal} (até {meses_pt.get(ultimo_mes_disponivel, ultimo_mes_disponivel)})"
                 nome_periodo_comp = f"o mesmo período de {ano_comparacao}"
             
             # Adiciona colunas SH2, SH4 e SH6
@@ -504,7 +507,7 @@ if st.button("Iniciar Análise por Produto"):
             df_imp_princ['SH6'] = df_imp_princ['CO_NCM'].apply(get_sh6)
             df_imp_comp['SH6'] = df_imp_comp['CO_NCM'].apply(get_sh6)
             
-            # --- Lógica de Loop (Agrupado vs Separado) ---
+            # Lógica de Loop (Agrupado vs Separado)
             if agrupado:
                 nome_grupo = nome_agrupamento if (nome_agrupamento and nome_agrupamento.strip() != "") else ", ".join([p.split(' - ')[1] for p in produtos_para_agrupar_nomes])
                 produtos_para_processar = [{
@@ -605,11 +608,10 @@ if st.button("Iniciar Análise por Produto"):
                 )
                 
                 # --- RE-IMPLEMENTADO: Lógica do Expander (Exportação) ---
-                if agrupado:
+                if agrupado and total_selecionado > 1:
                     with st.expander("Ver detalhamento de produtos por país (Exportação)"):
                         top_paises_lista = df_display_exp['País'].head(top_n_paises).tolist()
                         
-                        # Função para mapear NCM ao produto selecionado
                         def map_produto_selecionado(row):
                             if row['SH6'] in produto_info['codigos_sh6']:
                                 return mapa_sh6_nomes.get(row['SH6'], row['SH6'])
@@ -617,12 +619,11 @@ if st.button("Iniciar Análise por Produto"):
                                 return mapa_sh4_nomes.get(row['SH4'], row['SH4'])
                             if row['SH2'] in produto_info['codigos_sh2']:
                                 return mapa_sh2_nomes.get(row['SH2'], row['SH2'])
-                            return None # Será filtrado
+                            return None 
 
                         df_exp_princ_f['Produto'] = df_exp_princ_f.apply(map_produto_selecionado, axis=1)
                         df_exp_comp_f['Produto'] = df_exp_comp_f.apply(map_produto_selecionado, axis=1)
 
-                        # Filtra NCMs que não pertencem a nenhum grupo principal
                         df_exp_princ_f_detalhe = df_exp_princ_f.dropna(subset=['Produto'])
                         df_exp_comp_f_detalhe = df_exp_comp_f.dropna(subset=['Produto'])
 
@@ -722,7 +723,7 @@ if st.button("Iniciar Análise por Produto"):
                 )
                 
                 # --- RE-IMPLEMENTADO: Lógica do Expander (Importação) ---
-                if agrupado:
+                if agrupado and total_selecionado > 1:
                     with st.expander("Ver detalhamento de produtos por país (Importação)"):
                         top_paises_lista_imp = df_display_imp['País'].head(top_n_paises).tolist()
                         
