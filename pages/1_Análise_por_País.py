@@ -643,7 +643,7 @@ if st.button(" Iniciar Geração do Relatório"):
             
             # --- ALTERADO: Carrega df_ncm principal aqui ---
             df_ncm, _ = carregar_dataframe(url_ncm_sh, "NCM_SH.csv", usecols=['CO_SH4', 'NO_SH4_POR'], dtypes={'CO_SH4': str}, mostrar_progresso=False)
-            df_uf_mun = carregar_dataframe(url_uf_mun, "UF_MUN.csv", usecols=['CO_MUN_GEO', 'NO_MUN_MIN'], mostrar_progresso=False)
+            df_ncm = carregar_dataframe(url_ncm_sh, "NCM_SH.csv", usecols=['CO_SH4', 'NO_SH4_POR'], dtypes={'CO_SH4': str}, mostrar_progresso=False)
             
             if df_ncm is None or df_uf_mun is None:
                 st.error("Não foi possível carregar tabelas auxiliares (NCM ou Municípios). Abortando.")
