@@ -14,6 +14,8 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
+st.set_page_config(layout="wide")
+
 # --- Bloco da Logo na Sidebar ---
 logo_sidebar_path = "LogoMinasGerais.png"
 if os.path.exists(logo_sidebar_path):
