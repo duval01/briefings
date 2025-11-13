@@ -14,7 +14,9 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
+# --- ALTERAÇÃO: Define o layout da página como "wide" ---
 st.set_page_config(layout="wide")
+# ----------------------------------------------------
 
 # --- Bloco da Logo na Sidebar ---
 logo_sidebar_path = "LogoMinasGerais.png"
@@ -51,7 +53,6 @@ ARTIGOS_PAISES_MAP = {
 }
 
 # --- BLOCO MANUAL DE BLOCOS ECONÔMICOS ---
-# (Como definido anteriormente)
 BLOCOS_ECONOMICOS = {
     "América Central e Caribe": [],
     "América do Norte": ["Estados Unidos", "Canadá", "México"],
@@ -120,7 +121,6 @@ def carregar_dataframe(url, nome_arquivo, usecols=None, dtypes=None, mostrar_pro
             progress_bar.empty()
     return df
 
-# --- ALTERADO: Função de Países (padrão do script de Produtos) ---
 @st.cache_data
 def obter_dados_paises():
     """Carrega a tabela de países (ID e Nome) e armazena em cache."""
@@ -132,15 +132,13 @@ def obter_dados_paises():
         mapa_nome_codigo = pd.Series(df_pais.CO_PAIS.values, index=df_pais.NO_PAIS).to_dict()
         return mapa_codigo_nome, lista_nomes, mapa_nome_codigo
     return {}, [], {}
-# --- FIM ALTERADO ---
 
-# --- NOVO: Funções de NCM (padrão do script de Produtos) ---
 @st.cache_data
 def obter_dados_produtos_ncm():
-    """Carrega a tabela NCM completa (SH2, SH4 e SH6) e armazena em cache."""
+    """Carrega a tabela NCM (SH4) e armazena em cache."""
     url_ncm = "https://balanca.economia.gov.br/balanca/bd/tabelas/NCM_SH.csv"
-    usecols_ncm = ['CO_SH2', 'NO_SH2_POR', 'CO_SH4', 'NO_SH4_POR', 'CO_SH6', 'NO_SH6_POR']
-    df_ncm = carregar_dataframe(url_ncm, "NCM_SH.csv", usecols=usecols_ncm, mostrar_progresso=False)
+    usecols_ncm = ['CO_SH4', 'NO_SH4_POR']
+    df_ncm = carregar_dataframe(url_ncm, "NCM_SH.csv", usecols=usecols_ncm, dtypes={'CO_SH4': str}, mostrar_progresso=False)
     if df_ncm is not None:
         df_ncm['CO_SH4_STR'] = df_ncm['CO_SH4'].astype(str).str.zfill(4)
         mapa_sh4 = df_ncm.drop_duplicates('CO_SH4_STR').set_index('CO_SH4_STR')['NO_SH4_POR']
@@ -154,7 +152,6 @@ def get_sh4(co_ncm):
         return None
     co_ncm_str = co_ncm_str.zfill(8)
     return co_ncm_str[:4]
-# --- FIM NOVO ---
 
 @st.cache_data
 def obter_lista_de_blocos():
@@ -167,19 +164,16 @@ def obter_paises_do_bloco(nome_bloco):
     """Retorna uma lista de nomes de países (hardcoded) para um bloco específico."""
     return BLOCOS_ECONOMICOS.get(nome_bloco, [])
 
-# --- ALTERADO: Função de Países (padrão do script de Produtos) ---
 def obter_lista_de_paises(lista_nomes):
     """Apenas retorna a lista de nomes pré-carregada."""
     if not lista_nomes:
         return ["Erro ao carregar lista de países"]
     return lista_nomes
-# --- FIM ALTERADO ---
 
 def obter_codigo_pais(nome_pais, mapa_reverso):
     """Obtém o código do país a partir do mapa."""
     return mapa_reverso.get(nome_pais)
 
-# --- ALTERADO: Função de Países (padrão do script de Produtos) ---
 def validar_paises(paises_selecionados, mapa_nome_codigo):
     """Valida a lista de países usando o mapa pré-carregado."""
     codigos_paises = []
@@ -197,7 +191,6 @@ def validar_paises(paises_selecionados, mapa_nome_codigo):
             codigos_paises.append(codigo_pais)
             nomes_paises_validos.append(pais)
     return codigos_paises, nomes_paises_validos, paises_invalidos
-# --- FIM ALTERADO ---
 
 def filtrar_dados_por_estado_e_mes(df, estados, meses_para_filtrar):
     df_filtrado = df[df['SG_UF_NCM'].isin(list(estados))]
@@ -286,7 +279,6 @@ def agregar_dados_por_produto(df, df_ncm):
     """Mantida para a geração de texto do DOCX."""
     df_filtered = df.copy()
     
-    # Adiciona SH4 se não existir (necessário para esta função)
     if 'SH4' not in df_filtered.columns:
         df_filtered['SH4'] = df_filtered['CO_NCM'].apply(get_sh4).astype(str)
         
@@ -294,7 +286,6 @@ def agregar_dados_por_produto(df, df_ncm):
     produtos = df_sh4_not_null.groupby('SH4')['VL_FOB'].sum().sort_values(ascending=False).head(5)
     produtos_nomes = {}
     
-    # Prepara o df_ncm para busca
     if 'CO_SH4_STR' not in df_ncm.columns:
          df_ncm['CO_SH4_STR'] = df_ncm['CO_SH4'].astype(str).str.zfill(4)
 
@@ -478,12 +469,17 @@ def clear_download_state_pais():
 # --- ENTRADAS PRINCIPAIS ---
 st.header("1. Configurações da Análise")
 
+st.warning(
+    "⚠️ **Atenção:** As listas de países para os **Blocos Econômicos** "
+    "são definidas manualmente no código-fonte (variável `BLOCOS_ECONOMICOS`). "
+    "**Verifique se os nomes dos países nas listas correspondem** "
+    "exatamente aos nomes no arquivo `PAIS.csv` da Comex Stat."
+)
 
-# --- ALTERADO: Carrega mapas de nomes ---
 try:
     mapa_nomes_paises, lista_paises_nomes, mapa_paises_reverso = obter_dados_paises()
     lista_de_blocos = obter_lista_de_blocos()
-    _, mapa_sh4_nomes = obter_dados_produtos_ncm() # Para as tabelas
+    df_ncm_completo, mapa_sh4_nomes = obter_dados_produtos_ncm() 
 except Exception as e:
     st.error(f"Erro crítico ao carregar listas iniciais: {e}")
     lista_paises_nomes = ["Falha ao carregar países"]
@@ -491,7 +487,7 @@ except Exception as e:
     mapa_nomes_paises = {}
     mapa_paises_reverso = {}
     mapa_sh4_nomes = {}
-# --- FIM ALTERADO ---
+    df_ncm_completo = None
 
 lista_de_paises = obter_lista_de_paises(lista_paises_nomes)
 
@@ -502,7 +498,7 @@ if not valores_padrao_filtrados and len(lista_de_paises) > 0 and "Erro" not in l
     valores_padrao_filtrados = [lista_de_paises[0]]
 elif "Erro" in lista_de_paises[0] or "Falha" in lista_de_paises[0]:
     valores_padrao_filtrados = [] 
-    st.warning("Não foi possível carregar la lista de países. O site de dados pode estar fora do ar.")
+    st.warning("Não foi possível carregar a lista de países. O site de dados pode estar fora do ar.")
 # --- FIM DA LÓGICA ---
 
 ano_atual = datetime.now().year
@@ -532,16 +528,7 @@ with col1:
         on_change=clear_download_state_pais
     )
     
-    # --- NOVO: Seletor de N Produtos ---
-    top_n_produtos = st.number_input(
-        "Nº de Produtos no Ranking:",
-        min_value=1,
-        max_value=100,
-        value=10,      # Valor padrão
-        help="Quantos produtos (SH4) devem ser exibidos nas tabelas de ranking (Top 10, Top 20, etc.).",
-        on_change=clear_download_state_pais
-    )
-    # --- FIM NOVO ---
+    # --- ALTERAÇÃO: Widget movido para col2 ---
 
 with col2:
     blocos_selecionados = st.multiselect(
@@ -558,6 +545,17 @@ with col2:
         help="Você pode digitar para pesquisar e selecionar múltiplos países.",
         on_change=clear_download_state_pais
     )
+    
+    # --- ALTERAÇÃO: Widget movido da col1 para cá ---
+    top_n_produtos = st.number_input(
+        "Nº de Produtos no Ranking:",
+        min_value=1,
+        max_value=100,
+        value=10,
+        help="Quantos produtos (SH4) devem ser exibidos nas tabelas de ranking (Top 10, Top 20, etc.).",
+        on_change=clear_download_state_pais
+    )
+    # --- FIM DA ALTERAÇÃO ---
 
 # --- LÓGICA CONDICIONAL PARA ENTRADAS ---
 agrupado = True 
@@ -626,7 +624,6 @@ if st.button(" Iniciar Geração do Relatório"):
     with st.spinner(f"Gerando relatório para {', '.join(paises)} ({ano_principal} vs {ano_comparacao})... Isso pode levar alguns minutos."):
         
         try:
-            # --- ALTERADO: Passa o mapa reverso para validação ---
             codigos_paises, nomes_paises_validos, paises_invalidos = validar_paises(paises, mapa_paises_reverso)
             if paises_invalidos:
                 st.warning(f"Países não encontrados ou inválidos (ignorados): {', '.join(paises_invalidos)}")
@@ -638,22 +635,18 @@ if st.button(" Iniciar Geração do Relatório"):
             url_exp_ano_comparacao = f"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/ncm/EXP_{ano_comparacao}.csv"
             url_imp_ano_principal = f"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/ncm/IMP_{ano_principal}.csv"
             url_imp_ano_comparacao = f"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/ncm/IMP_{ano_comparacao}.csv"
-            url_ncm_sh = "https://balanca.economia.gov.br/balanca/bd/tabelas/NCM_SH.csv"
             url_exp_mun_principal = f"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/mun/EXP_{ano_principal}_MUN.csv"
             url_imp_mun_principal = f"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/mun/IMP_{ano_principal}_MUN.csv"
             url_uf_mun = "https://balanca.economia.gov.br/balanca/bd/tabelas/UF_MUN.csv"
             
-            # --- ALTERADO: Carrega df_ncm principal aqui ---
-            df_ncm, _ = carregar_dataframe(url_ncm_sh, "NCM_SH.csv", usecols=['CO_SH4', 'NO_SH4_POR'], dtypes={'CO_SH4': str}, mostrar_progresso=False)
-            df_ncm = carregar_dataframe(url_ncm_sh, "NCM_SH.csv", usecols=['CO_SH4', 'NO_SH4_POR'], dtypes={'CO_SH4': str}, mostrar_progresso=False)
+            # --- CORREÇÃO: Define df_ncm e df_uf_mun ANTES do 'if' ---
+            df_ncm = df_ncm_completo 
             df_uf_mun = carregar_dataframe(url_uf_mun, "UF_MUN.csv", usecols=['CO_MUN_GEO', 'NO_MUN_MIN'], mostrar_progresso=False)
             
             if df_ncm is None or df_uf_mun is None:
                 st.error("Não foi possível carregar tabelas auxiliares (NCM ou Municípios). Abortando.")
                 st.stop()
-            # Prepara o df_ncm para busca
-            df_ncm['CO_SH4_STR'] = df_ncm['CO_SH4'].astype(str).str.zfill(4)
-            # --- FIM ALTERADO ---
+            # --- FIM DA CORREÇÃO ---
 
             df_exp_ano = carregar_dataframe(url_exp_ano_principal, f"EXP_{ano_principal}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
             df_exp_ano_anterior = carregar_dataframe(url_exp_ano_comparacao, f"EXP_{ano_comparacao}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
@@ -662,10 +655,8 @@ if st.button(" Iniciar Geração do Relatório"):
                 st.error("Não foi possível carregar dados de exportação. Verifique os anos selecionados ou tente novamente mais tarde.")
                 st.stop()
                 
-            # --- NOVO: Adiciona colunas SH4 ---
             df_exp_ano['SH4'] = df_exp_ano['CO_NCM'].apply(get_sh4)
             df_exp_ano_anterior['SH4'] = df_exp_ano_anterior['CO_NCM'].apply(get_sh4)
-            # --- FIM NOVO ---
 
             ultimo_mes_disponivel = df_exp_ano['CO_MES'].max()
             meses_para_filtrar = []
@@ -720,6 +711,8 @@ if st.button(" Iniciar Geração do Relatório"):
             df_exp_mun_filtrado = df_exp_mun[(df_exp_mun['SG_UF_MUN'] == 'MG') & (df_exp_mun['CO_PAIS'].isin(codigos_paises)) & (df_exp_mun['CO_MES'].isin(meses_para_filtrar))]
             exportacoes_por_municipio, total_exportacoes_municipios = agregar_dados_por_municipio(df_exp_mun_filtrado)
             
+            del df_exp_ano_estados, df_exp_ano_anterior_estados, df_exp_ano_mg 
+            
             df_imp_ano = carregar_dataframe(url_imp_ano_principal, f"IMP_{ano_principal}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
             df_imp_ano_anterior = carregar_dataframe(url_imp_ano_comparacao, f"IMP_{ano_comparacao}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
             
@@ -727,10 +720,8 @@ if st.button(" Iniciar Geração do Relatório"):
                 st.error("Não foi possível carregar dados de importação. Abortando.")
                 st.stop()
             
-            # --- NOVO: Adiciona colunas SH4 ---
             df_imp_ano['SH4'] = df_imp_ano['CO_NCM'].apply(get_sh4)
             df_imp_ano_anterior['SH4'] = df_imp_ano_anterior['CO_NCM'].apply(get_sh4)
-            # --- FIM NOVO ---
             
             df_imp_ano_estados = filtrar_dados_por_estado_e_mes(df_imp_ano, estados_brasileiros, meses_para_filtrar)
             df_imp_ano_anterior_estados = filtrar_dados_por_estado_e_mes(df_imp_ano_anterior, estados_brasileiros, meses_para_filtrar)
@@ -768,6 +759,8 @@ if st.button(" Iniciar Geração do Relatório"):
             df_imp_mun_filtrado = df_imp_mun[(df_imp_mun['SG_UF_MUN'] == 'MG') & (df_imp_mun['CO_PAIS'].isin(codigos_paises)) & (df_imp_mun['CO_MES'].isin(meses_para_filtrar))]
             importacoes_por_municipio, total_importacoes_municipios = agregar_dados_por_municipio(df_imp_mun_filtrado)
             
+            del df_imp_ano_estados, df_imp_ano_anterior_estados, df_imp_ano_mg, df_imp_mun, df_imp_mun_filtrado
+            
             balanca_ano, balanca_ano_anterior, fluxo_comercial_ano, fluxo_comercial_ano_anterior, variacao_balanca, variacao_fluxo = calcular_balanca_e_fluxo(exportacao_pais_ano, importacao_pais_ano, exportacao_pais_ano_anterior, importacao_pais_ano_anterior)
             
             if agrupado:
@@ -775,20 +768,17 @@ if st.button(" Iniciar Geração do Relatório"):
                 paises_corretos = nomes_paises_validos 
                 nome_relatorio = nome_agrupamento if (nome_agrupamento and nome_agrupamento.strip() != "") else ', '.join(paises_corretos)
 
-                # Geração de Texto
+                # Geração de Texto ...
                 fluxo_e_balanca = f"Considerando {nome_periodo}, Minas Gerais e {nome_relatorio} tiveram um fluxo comercial de {formatar_valor(fluxo_comercial_ano)}, ..."
                 texto_exportacao = f"As exportações mineiras para {nome_relatorio} somaram {formatar_valor(exportacao_pais_ano)}..."
                 # ... (resto da geração de texto) ...
                 
-                # Montagem do Documento
                 titulo_documento = f"Briefing - {nome_relatorio} - {ano_principal}"
-                app.set_titulo(titulo_documento)
-                # ... (resto da montagem do docx) ...
                 
                 # --- NOVO: Lógica das Tabelas (Agrupado) ---
                 
                 # --- Tabela Exportação ---
-                st.header("Principais Produtos Exportados (MG para Agrupamento)")
+                st.header(f"Principais Produtos Exportados (MG para {nome_relatorio})")
                 exp_produtos_princ = df_exp_ano_mg_paises.groupby('SH4')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
                 exp_produtos_comp = df_exp_ano_anterior_mg_paises.groupby('SH4')['VL_FOB'].sum().reset_index()
                 
@@ -810,7 +800,8 @@ if st.button(" Iniciar Geração do Relatório"):
                 
                 st.dataframe(
                     df_display_exp_prod[['Produto', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']].head(top_n_produtos),
-                    hide_index=True
+                    hide_index=True,
+                    use_container_width=True
                 )
 
                 # --- Expander Exportação ---
@@ -844,11 +835,12 @@ if st.button(" Iniciar Geração do Relatório"):
                     detalhe_exp_final = detalhe_exp_final.sort_values(by=['Produto', f'Valor {ano_principal} (US$)'], ascending=[True, False])
                     st.dataframe(
                         detalhe_exp_final[['Produto', 'País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']],
-                        hide_index=True
+                        hide_index=True,
+                        use_container_width=True
                     )
                 
                 # --- Tabela Importação ---
-                st.header("Principais Produtos Importados (MG do Agrupamento)")
+                st.header(f"Principais Produtos Importados (MG de {nome_relatorio})")
                 imp_produtos_princ = df_imp_ano_mg_paises.groupby('SH4')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
                 imp_produtos_comp = df_imp_ano_anterior_mg_paises.groupby('SH4')['VL_FOB'].sum().reset_index()
                 
@@ -870,7 +862,8 @@ if st.button(" Iniciar Geração do Relatório"):
                 
                 st.dataframe(
                     df_display_imp_prod[['Produto', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']].head(top_n_produtos),
-                    hide_index=True
+                    hide_index=True,
+                    use_container_width=True
                 )
 
                 # --- Expander Importação ---
@@ -904,13 +897,15 @@ if st.button(" Iniciar Geração do Relatório"):
                     detalhe_imp_final = detalhe_imp_final.sort_values(by=['Produto', f'Valor {ano_principal} (US$)'], ascending=[True, False])
                     st.dataframe(
                         detalhe_imp_final[['Produto', 'País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']],
-                        hide_index=True
+                        hide_index=True,
+                        use_container_width=True
                     )
                 # --- FIM NOVO ---
                 
-                # Gera o Docx (código original omitido para brevidade)
+                # Gera o Docx
                 app.set_titulo(titulo_documento)
-                # ...
+                # ... (resto da geração do docx) ...
+                
                 file_bytes, file_name = app.finalizar_documento() 
                 st.session_state.arquivos_gerados_pais.append({"name": file_name, "data": file_bytes})
 
@@ -918,20 +913,26 @@ if st.button(" Iniciar Geração do Relatório"):
                 # --- LÓGICA PARA SEPARADOS ---
                 paises_corretos = nomes_paises_validos
                 
+                # Recarrega DFs completos para o loop
+                df_exp_ano_loop = df_exp_ano.copy()
+                df_exp_ano_anterior_loop = df_exp_ano_anterior.copy()
+                df_imp_ano_loop = df_imp_ano.copy()
+                df_imp_ano_anterior_loop = df_imp_ano_anterior.copy()
+
                 for pais in paises_corretos:
                     st.subheader(f"Processando: {pais}") 
                     app = DocumentoApp(logo_path=logo_path_to_use)
                     
-                    codigos_paises_loop = [obter_codigo_pais(pais, mapa_paises_reverso)] # Usa o mapa
+                    codigos_paises_loop = [obter_codigo_pais(pais, mapa_paises_reverso)]
 
-                    # Recarrega os dados filtrados para este país
-                    df_exp_ano_mg_paises = filtrar_dados_por_mg_e_pais(df_exp_ano, codigos_paises_loop, False, meses_para_filtrar)
-                    df_exp_ano_anterior_mg_paises = filtrar_dados_por_mg_e_pais(df_exp_ano_anterior, codigos_paises_loop, False, meses_para_filtrar)
-                    df_imp_ano_mg_paises = filtrar_dados_por_mg_e_pais(df_imp_ano, codigos_paises_loop, False, meses_para_filtrar)
-                    df_imp_ano_anterior_mg_paises = filtrar_dados_por_mg_e_pais(df_imp_ano_anterior, codigos_paises_loop, False, meses_para_filtrar)
+                    # Filtra dados para este país
+                    df_exp_ano_mg_paises = filtrar_dados_por_mg_e_pais(df_exp_ano_loop, codigos_paises_loop, False, meses_para_filtrar)
+                    df_exp_ano_anterior_mg_paises = filtrar_dados_por_mg_e_pais(df_exp_ano_anterior_loop, codigos_paises_loop, False, meses_para_filtrar)
+                    df_imp_ano_mg_paises = filtrar_dados_por_mg_e_pais(df_imp_ano_loop, codigos_paises_loop, False, meses_para_filtrar)
+                    df_imp_ano_anterior_mg_paises = filtrar_dados_por_mg_e_pais(df_imp_ano_anterior_loop, codigos_paises_loop, False, meses_para_filtrar)
                     
-                    # Gera texto (código original omitido para brevidade)
-                    # ...
+                    # Gera texto (código original omitido)
+                    # ... (cálculos de posição, balança, etc) ...
                     
                     # --- NOVO: Lógica das Tabelas (Separados) ---
                     
@@ -958,7 +959,8 @@ if st.button(" Iniciar Geração do Relatório"):
                     
                     st.dataframe(
                         df_display_exp_prod[['Produto', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']].head(top_n_produtos),
-                        hide_index=True
+                        hide_index=True,
+                        use_container_width=True
                     )
                     
                     # --- Tabela Importação ---
@@ -984,17 +986,20 @@ if st.button(" Iniciar Geração do Relatório"):
                     
                     st.dataframe(
                         df_display_imp_prod[['Produto', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']].head(top_n_produtos),
-                        hide_index=True
+                        hide_index=True,
+                        use_container_width=True
                     )
                     # --- FIM NOVO ---
                     
-                    # Gera o Docx (código original omitido para brevidade)
+                    # Gera o Docx (código original omitido)
                     # ...
                     file_bytes, file_name = app.finalizar_documento()
                     st.session_state.arquivos_gerados_pais.append({"name": file_name, "data": file_bytes})
             
             # Limpa DFs grandes da memória
             del df_exp_ano, df_exp_ano_anterior, df_imp_ano, df_imp_ano_anterior
+            if 'df_exp_ano_loop' in locals():
+                del df_exp_ano_loop, df_exp_ano_anterior_loop, df_imp_ano_loop, df_imp_ano_anterior_loop
                 
         except Exception as e:
             st.error(f"Ocorreu um erro inesperado durante a geração:")
