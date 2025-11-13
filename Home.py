@@ -27,9 +27,9 @@ Esta é uma ferramenta automatizada para criar relatórios de comércio exterior
 
 Use o menu de navegação (à esquerda) para selecionar o tipo de análise que deseja realizar:
 
-* **Análise por País:** Permite filtrar por um ou mais países e analisar o comércio de Minas Gerais com eles (incluindo os principais produtos e municípios envolvidos).
+* **Análise por País:** Permite filtrar por um ou mais países e analisar o comércio de Minas Gerais com eles (incluindo os principais produtos).
 * **Análise por Município:** Permite filtrar por um ou mais municípios de MG e analisar seus principais destinos/origens (países).
-* **Análise por Produto:** Permite filtrar por NCM e analisar os principais destinos/origens (países).
+* **Análise por Produto:** Permite filtrar por SH2, SH4 e SH6 e analisar os principais destinos/origens (países).
 
 """)
 
@@ -49,6 +49,7 @@ with col1:
 with col2:
     # Coluna 2 (maior) agora contém o texto
     st.caption("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
+
 
 
 
