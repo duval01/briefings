@@ -16,7 +16,7 @@ if os.path.exists(logo_sidebar_path):
 
 
 # 3. Conteúdo da Página Home
-st.title(" automação de Briefings ComexStat")
+st.title(" Gerador de Briefings | AEST")
 st.write("---")
 
 st.header("Bem-vindo ao Gerador de Briefings!")
@@ -49,6 +49,7 @@ with col1:
 with col2:
     # Coluna 2 (maior) agora contém o texto
     st.caption("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
+
 
 
 
