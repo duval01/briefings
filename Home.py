@@ -19,7 +19,7 @@ if os.path.exists(logo_sidebar_path):
 st.title(" Gerador de Briefings | AEST")
 st.write("---")
 
-st.header("Bem-vindo ao Gerador de Briefings!")
+st.header("Bem-vindo ao gerador de briefings!")
 st.markdown("""
 Esta é uma ferramenta automatizada para criar relatórios de comércio exterior com base nos microdados públicos do ComexStat.
 
@@ -49,6 +49,7 @@ with col1:
 with col2:
     # Coluna 2 (maior) agora contém o texto
     st.caption("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")
+
 
 
 
