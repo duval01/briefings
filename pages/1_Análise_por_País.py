@@ -13,16 +13,19 @@ from docx.shared import Cm, Pt, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
+import os
 
-# --- ALTERAÇÃO: Define o layout da página como "wide" ---
-st.set_page_config(layout="wide")
-# ----------------------------------------------------
+# --- IMPORTAÇÃO E PROTEÇÃO DA PÁGINA ---
+try:
+    # --- ALTERAÇÃO: Importa do auth.py ---
+    from auth import page_protector 
+except ImportError:
+    st.error("Erro ao importar autenticação. Execute a partir do Home.py")
+    st.stop()
 
-# --- Bloco da Logo na Sidebar ---
-logo_sidebar_path = "LogoMinasGerais.png"
-if os.path.exists(logo_sidebar_path):
-    st.sidebar.image(logo_sidebar_path, width=200)
-# --- Fim do Bloco ---
+# Protege a página, oculta nav padrão e desenha a sidebar
+page_protector(page_name="Análise por País")
+# --- FIM DA PROTEÇÃO ---
 
 # --- CONFIGURAÇÕES GLOBAIS E CONSTANTES ---
 requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
@@ -468,13 +471,6 @@ def clear_download_state_pais():
 
 # --- ENTRADAS PRINCIPAIS ---
 st.header("1. Configurações da Análise")
-
-st.warning(
-    "⚠️ **Atenção:** As listas de países para os **Blocos Econômicos** "
-    "são definidas manualmente no código-fonte (variável `BLOCOS_ECONOMICOS`). "
-    "**Verifique se os nomes dos países nas listas correspondem** "
-    "exatamente aos nomes no arquivo `PAIS.csv` da Comex Stat."
-)
 
 try:
     mapa_nomes_paises, lista_paises_nomes, mapa_paises_reverso = obter_dados_paises()
