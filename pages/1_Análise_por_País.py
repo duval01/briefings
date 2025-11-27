@@ -9,7 +9,7 @@ import io
 import re
 import zipfile
 from docx import Document
-from docx.shared import Cm, Pt, Inches
+from docx.shared import Cm, Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -17,20 +17,17 @@ import os
 
 # --- IMPORTAÇÃO E PROTEÇÃO DA PÁGINA ---
 try:
-    # --- ALTERAÇÃO: Importa do auth.py ---
     from auth import page_protector 
+    # Protege a página, oculta nav padrão e desenha a sidebar
+    page_protector(page_name="Análise por País")
 except ImportError:
-    st.error("Erro ao importar autenticação. Execute a partir do Home.py")
-    st.stop()
-
-# Protege a página, oculta nav padrão e desenha a sidebar
-page_protector(page_name="Análise por País")
-# --- FIM DA PROTEÇÃO ---
+    # Caso esteja rodando localmente sem o auth.py, apenas avisa mas não para (para testes)
+    st.warning("Atenção: Módulo de autenticação 'auth' não encontrado. Rodando em modo de teste.")
 
 # --- CONFIGURAÇÕES GLOBAIS E CONSTANTES ---
 requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
 estados_brasileiros = {'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR',
-                      'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SE', 'SP', 'TO'}
+                       'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SE', 'SP', 'TO'}
 meses_pt = {
     1: "janeiro", 2: "fevereiro", 3: "março", 4: "abril", 5: "maio", 6: "junho",
     7: "julho", 8: "agosto", 9: "setembro", 10: "outubro", 11: "novembro", 12: "dezembro"
@@ -205,26 +202,14 @@ def filtrar_dados_por_mg_e_pais(df, codigos_paises, agrupado, meses_para_filtrar
     if agrupado:
         df_filtrado = df_filtrado[df_filtrado['CO_PAIS'].isin(codigos_paises)]
     else:
-        df_filtrado = df_filtrado[df_filtrado['CO_PAIS'] == codigos_paises[0]]
+        # Se não agrupado, assume lista de 1 item
+        if isinstance(codigos_paises, list) and len(codigos_paises) > 0:
+             df_filtrado = df_filtrado[df_filtrado['CO_PAIS'] == codigos_paises[0]]
+        else:
+             df_filtrado = df_filtrado[df_filtrado['CO_PAIS'] == codigos_paises]
+
     df_filtrado = df_filtrado[df_filtrado['CO_MES'].isin(meses_para_filtrar)]
     return df_filtrado
-
-def calcular_soma_por_estado(df, df_anterior=None):
-    soma_ano = df.groupby('SG_UF_NCM')['VL_FOB'].sum()
-    if df_anterior is not None:
-        soma_ano_anterior = df_anterior.groupby('SG_UF_NCM')['VL_FOB'].sum()
-        return soma_ano, soma_ano_anterior
-    else:
-        return soma_ano
-
-def calcular_classificacao_estados(soma_ano, soma_ano_anterior, ano_principal, ano_comparacao):
-    classificacao = pd.concat([soma_ano, soma_ano_anterior], axis=1, keys=[str(ano_principal), str(ano_comparacao)]).sort_values(
-        by=str(ano_principal), ascending=False)
-    return classificacao
-
-def calcular_posicao_mg(classificacao):
-    posicao_mg = classificacao.index.get_loc('MG') + 1
-    return posicao_mg
 
 def calcular_ranking_por_pais(df):
     ranking = df.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False)
@@ -243,22 +228,36 @@ def calcular_diferenca_percentual(valor_atual, valor_anterior):
     if diferenca > 0:
         tipo_diferenca = "um acréscimo"
     elif diferenca < 0:
-        tipo_diferenca = "uma redução"
+        tipo_diferenca = "uma queda" # Alterado para bater com o doc enviado ("queda" ao inves de "redução")
     else:
         tipo_diferenca = "uma estabilidade"
     diferenca = abs(diferenca)
     return diferenca, tipo_diferenca
 
-def calcular_posicao_estado_pais(df, codigos_paises):
-    df_comercio_pais = df[df['CO_PAIS'].isin(codigos_paises)]
-    if df_comercio_pais.empty:
-        return 0 
-    ranking_estados_pais = df_comercio_pais.groupby('SG_UF_NCM')['VL_FOB'].sum().sort_values(
-        ascending=False)
-    if 'MG' not in ranking_estados_pais.index:
-        return 0 
-    posicao_mg_pais = ranking_estados_pais.index.get_loc('MG') + 1
-    return posicao_mg_pais
+def calcular_ranking_e_participacao_brasil(df_brasil, codigos_paises):
+    """
+    Calcula o ranking de MG entre os estados brasileiros para um destino/origem
+    e a participação de MG no total do Brasil.
+    """
+    # Filtra dados do Brasil para o país/bloco destino
+    df_brasil_pais = df_brasil[df_brasil['CO_PAIS'].isin(codigos_paises)]
+    
+    # Agrupa por UF
+    ranking_uf = df_brasil_pais.groupby('SG_UF_NCM')['VL_FOB'].sum().sort_values(ascending=False)
+    
+    total_brasil_pais = ranking_uf.sum()
+    
+    if 'MG' not in ranking_uf.index:
+        return 0, 0.0
+        
+    posicao_mg = ranking_uf.index.get_loc('MG') + 1
+    valor_mg = ranking_uf['MG']
+    
+    participacao_mg_br = 0.0
+    if total_brasil_pais > 0:
+        participacao_mg_br = round((valor_mg / total_brasil_pais) * 100, 2)
+        
+    return posicao_mg, participacao_mg_br
 
 def calcular_balanca_e_fluxo(exportacao_ano, importacao_ano, exportacao_ano_anterior, importacao_ano_anterior):
     balanca_ano = exportacao_ano - importacao_ano
@@ -273,36 +272,55 @@ def calcular_balanca_e_fluxo(exportacao_ano, importacao_ano, exportacao_ano_ante
         variacao_fluxo = ((fluxo_comercial_ano - fluxo_comercial_ano_anterior) / fluxo_comercial_ano_anterior) * 100
     return balanca_ano, balanca_ano_anterior, fluxo_comercial_ano, fluxo_comercial_ano_anterior, variacao_balanca, variacao_fluxo
 
-def agregar_dados_por_municipio(df):
-    dados_por_municipio = df.groupby('CO_MUN')['VL_FOB'].sum().sort_values(ascending=False)
-    total_municipios = dados_por_municipio.sum()
-    return dados_por_municipio, total_municipios
-
-def agregar_dados_por_produto(df, df_ncm):
-    """Mantida para a geração de texto do DOCX."""
-    df_filtered = df.copy()
-    
-    if 'SH4' not in df_filtered.columns:
-        df_filtered['SH4'] = df_filtered['CO_NCM'].apply(get_sh4).astype(str)
+def gerar_texto_lista_produtos(df_dados, mapa_nomes, top_n=5):
+    """Gera string: 'Produto A (X%); Produto B (Y%); ...' """
+    if df_dados.empty:
+        return "Nenhum produto registrado."
         
-    df_sh4_not_null = df_filtered.dropna(subset=['SH4'])
-    produtos = df_sh4_not_null.groupby('SH4')['VL_FOB'].sum().sort_values(ascending=False).head(5)
-    produtos_nomes = {}
+    total = df_dados['VL_FOB'].sum()
+    if total == 0:
+        return "Valor total zero."
+        
+    agrupado = df_dados.groupby('SH4')['VL_FOB'].sum().sort_values(ascending=False).head(top_n)
+    lista_textos = []
     
-    if 'CO_SH4_STR' not in df_ncm.columns:
-         df_ncm['CO_SH4_STR'] = df_ncm['CO_SH4'].astype(str).str.zfill(4)
+    for sh4, valor in agrupado.items():
+        nome = mapa_nomes.get(sh4, "Produto Desconhecido")
+        part = (valor / total) * 100
+        lista_textos.append(f"{nome} ({part:.2f}%)")
+        
+    return "; ".join(lista_textos) + "."
 
-    for sh4_code, valor in produtos.items():
-        filtro_ncm = df_ncm[df_ncm['CO_SH4_STR'] == sh4_code] 
-        if not filtro_ncm.empty:
-            nome_produto = filtro_ncm['NO_SH4_POR'].iloc[0]
-            produtos_nomes[nome_produto] = valor
-        else:
-            produtos_nomes[f"Produto SH4 {sh4_code} não encontrado"] = valor
-    return produtos_nomes
+def gerar_texto_lista_municipios(df_dados, df_uf_mun, top_n=5):
+    """Gera string: 'Município A (X%); Município B (Y%); ...' e retorna contagem total."""
+    if df_dados.empty:
+        return "Nenhum município.", 0
+        
+    total = df_dados['VL_FOB'].sum()
+    if total == 0:
+        return "Valor total zero.", 0
+
+    # Mapa de códigos para nomes
+    mapa_mun = pd.Series(df_uf_mun.NO_MUN_MIN.values, index=df_uf_mun.CO_MUN_GEO.astype(str)).to_dict()
+
+    # Ajuste CO_MUN se necessário (as vezes vem como int ou str)
+    df_dados = df_dados.copy()
+    df_dados['CO_MUN'] = df_dados['CO_MUN'].astype(str)
+    
+    contagem_total = df_dados['CO_MUN'].nunique()
+    
+    agrupado = df_dados.groupby('CO_MUN')['VL_FOB'].sum().sort_values(ascending=False).head(top_n)
+    lista_textos = []
+    
+    for co_mun, valor in agrupado.items():
+        nome = mapa_mun.get(co_mun, f"Município {co_mun}")
+        part = (valor / total) * 100
+        lista_textos.append(f"{nome} ({part:.2f}%)")
+        
+    return "; ".join(lista_textos) + ".", contagem_total
 
 def obter_artigo_pais(nome_pais):
-    return ARTIGOS_PAISES_MAP.get(nome_pais) 
+    return ARTIGOS_PAISES_MAP.get(nome_pais, "") 
 
 def formatar_valor(valor):
     prefixo = ""
@@ -341,19 +359,13 @@ class DocumentoApp:
         p = self.doc.add_paragraph()
         run = p.add_run(self.titulo_doc)
         run.font.name = 'Times New Roman'
-        run.font.size = Pt(12)
+        run.font.size = Pt(14)
         run.bold = True
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        # Espaço após o título
+        self.doc.add_paragraph()
 
-    def adicionar_conteudo_formatado(self, texto):
-        p = self.doc.add_paragraph()
-        p.paragraph_format.first_line_indent = Cm(1.25)
-        run = p.add_run(texto)
-        run.font.name = 'Times New Roman'
-        run.font.size = Pt(12)
-        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-
-    def adicionar_paragrafo(self, texto): 
+    def adicionar_paragrafo(self, texto):
         p = self.doc.add_paragraph()
         p.paragraph_format.first_line_indent = Cm(1.25)
         run = p.add_run(texto)
@@ -362,6 +374,8 @@ class DocumentoApp:
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
 
     def adicionar_titulo(self, texto):
+        # Espaço antes do título da seção
+        self.doc.add_paragraph()
         p = self.doc.add_paragraph()
         if self.subsecao_atual == 0:
             run = p.add_run(f"{self.secao_atual}. {texto}")
@@ -375,9 +389,6 @@ class DocumentoApp:
     def nova_secao(self):
         self.secao_atual += 1
         self.subsecao_atual = 0
-
-    def nova_subsecao(self):
-        self.subsecao_atual += 1
 
     def criar_cabecalho(self):
         section = self.doc.sections[0]
@@ -401,7 +412,7 @@ class DocumentoApp:
             except Exception as e:
                 paragraph_imagem.add_run("[Logo não encontrado]")
         else:
-            paragraph_imagem.add_run("[Logo não encontrado]")
+            paragraph_imagem.add_run("")
         paragraph_imagem.alignment = WD_ALIGN_PARAGRAPH.CENTER
         cell_texto = table.cell(0, 1)
         textos = [
@@ -449,11 +460,7 @@ class DocumentoApp:
         self.doc.save(file_stream)
         file_stream.seek(0)
         file_bytes = file_stream.getvalue()
-        st.success(f"Documento '{nome_arquivo_sanitizado}' gerado com sucesso!")
-        try:
-            self.doc.save(os.path.join(diretorio_real, nome_arquivo_sanitizado))
-        except Exception:
-            pass 
+        # Não salvamos no disco do servidor para evitar lotação, retornamos os bytes
         return file_bytes, nome_arquivo_sanitizado
 
 # --- ----------------------------------- ---
@@ -523,8 +530,6 @@ with col1:
         help="Selecione os meses. Se deixar em branco, o ano inteiro será analisado.",
         on_change=clear_download_state_pais
     )
-    
-    # --- ALTERAÇÃO: Widget movido para col2 ---
 
 with col2:
     blocos_selecionados = st.multiselect(
@@ -542,16 +547,14 @@ with col2:
         on_change=clear_download_state_pais
     )
     
-    # --- ALTERAÇÃO: Widget movido da col1 para cá ---
     top_n_produtos = st.number_input(
         "Nº de Produtos no Ranking:",
         min_value=1,
         max_value=100,
         value=10,
-        help="Quantos produtos (SH4) devem ser exibidos nas tabelas de ranking (Top 10, Top 20, etc.).",
+        help="Quantos produtos (SH4) devem ser exibidos nas tabelas de ranking e no texto.",
         on_change=clear_download_state_pais
     )
-    # --- FIM DA ALTERAÇÃO ---
 
 # --- LÓGICA CONDICIONAL PARA ENTRADAS ---
 agrupado = True 
@@ -582,13 +585,11 @@ if len(paises) > 1:
         agrupado = (agrupamento_input == "agrupados")
 
         if agrupado:
-            # --- INSERÇÃO DA DICA (PAÍSES) ---
             st.info(
                 "💡 **Como funciona o agrupamento:**\n"
-                "* **Agrupados:** Gerará um **único relatório** consolidado. As tabelas de ranking de produtos mostrarão a **soma** de todos os países selecionados. O detalhamento por país aparecerá no expansor.\n"
+                "* **Agrupados:** Gerará um **único relatório** consolidado.\n"
                 "* **Separados:** Gerará um **relatório individual** para cada país. O download será um arquivo .zip."
             )
-            # --- FIM DA INSERÇÃO ---
             
             quer_nome_agrupamento = st.checkbox(
                 "Deseja dar um nome para este agrupamento?", 
@@ -635,14 +636,12 @@ if st.button(" Iniciar Geração do Relatório"):
             url_imp_mun_principal = f"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/mun/IMP_{ano_principal}_MUN.csv"
             url_uf_mun = "https://balanca.economia.gov.br/balanca/bd/tabelas/UF_MUN.csv"
             
-            # --- CORREÇÃO: Define df_ncm e df_uf_mun ANTES do 'if' ---
             df_ncm = df_ncm_completo 
-            df_uf_mun = carregar_dataframe(url_uf_mun, "UF_MUN.csv", usecols=['CO_MUN_GEO', 'NO_MUN_MIN'], mostrar_progresso=False)
+            df_uf_mun = carregar_dataframe(url_uf_mun, "UF_MUN.csv", usecols=['CO_MUN_GEO', 'NO_MUN_MIN'], dtypes={'CO_MUN_GEO': str}, mostrar_progresso=False)
             
             if df_ncm is None or df_uf_mun is None:
                 st.error("Não foi possível carregar tabelas auxiliares (NCM ou Municípios). Abortando.")
                 st.stop()
-            # --- FIM DA CORREÇÃO ---
 
             df_exp_ano = carregar_dataframe(url_exp_ano_principal, f"EXP_{ano_principal}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
             df_exp_ano_anterior = carregar_dataframe(url_exp_ano_comparacao, f"EXP_{ano_comparacao}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
@@ -659,9 +658,9 @@ if st.button(" Iniciar Geração do Relatório"):
             
             if not meses_selecionados: 
                 meses_para_filtrar = list(range(1, ultimo_mes_disponivel + 1))
-                nome_periodo = f"o ano de {ano_principal} (até {meses_pt[ultimo_mes_disponivel]})"
-                nome_periodo_em = f"No ano de {ano_principal} (até {meses_pt[ultimo_mes_disponivel]})"
-                nome_periodo_comp = f"o mesmo período de {ano_comparacao}"
+                nome_periodo = f"o ano de {ano_principal}"
+                nome_periodo_em = f"Em {ano_principal}"
+                nome_periodo_comp = f"{ano_comparacao}"
             else:
                 meses_para_filtrar = [MESES_MAPA[m] for m in meses_selecionados]
                 if max(meses_para_filtrar) > ultimo_mes_disponivel:
@@ -671,44 +670,11 @@ if st.button(" Iniciar Geração do Relatório"):
                 nome_periodo_em = f"No período de {', '.join(meses_selecionados)} de {ano_principal}"
                 nome_periodo_comp = f"o mesmo período de {ano_comparacao}"
             
+            # Filtros Gerais
             df_exp_ano_estados = filtrar_dados_por_estado_e_mes(df_exp_ano, estados_brasileiros, meses_para_filtrar)
-            df_exp_ano_anterior_estados = filtrar_dados_por_estado_e_mes(df_exp_ano_anterior, estados_brasileiros, meses_para_filtrar)
             df_exp_ano_mg = filtrar_dados_por_estado_e_mes(df_exp_ano, ['MG'], meses_para_filtrar)
-            df_exp_ano_mg_paises = filtrar_dados_por_mg_e_pais(df_exp_ano, codigos_paises, agrupado, meses_para_filtrar)
-            df_exp_ano_anterior_mg_paises = filtrar_dados_por_mg_e_pais(df_exp_ano_anterior, codigos_paises, agrupado, meses_para_filtrar)
-            exportacao_pais_ano = df_exp_ano_mg_paises['VL_FOB'].sum()
-            exportacao_pais_ano_anterior = df_exp_ano_anterior_mg_paises['VL_FOB'].sum()
             
-            if not agrupado:
-                ranking_mg_exp = calcular_ranking_por_pais(df_exp_ano_mg)
-                try:
-                    posicao_pais_mg_exp = ranking_mg_exp.index.get_loc(codigos_paises[0]) + 1
-                except KeyError:
-                    posicao_pais_mg_exp = 0
-            else:
-                posicao_pais_mg_exp = None
-            
-            exportacao_mg_total_ano = df_exp_ano_mg['VL_FOB'].sum()
-            participacao_pais_mg_exp = calcular_participacao(exportacao_pais_ano, exportacao_mg_total_ano)
-            diferenca_exportacao, tipo_diferenca_exp = calcular_diferenca_percentual(exportacao_pais_ano, exportacao_pais_ano_anterior)
-            
-            exportacao_mg_para_pais = df_exp_ano[ (df_exp_ano['SG_UF_NCM'] == 'MG') & (df_exp_ano['CO_PAIS'].isin(codigos_paises)) & (df_exp_ano['CO_MES'].isin(meses_para_filtrar)) ]['VL_FOB'].sum()
-            exportacao_brasil_pais = df_exp_ano[ (df_exp_ano['CO_PAIS'].isin(codigos_paises)) & (df_exp_ano['CO_MES'].isin(meses_para_filtrar)) ]['VL_FOB'].sum()
-            
-            participacao_mg_brasil_exp = calcular_participacao(exportacao_mg_para_pais, exportacao_brasil_pais)
-            posicao_mg_pais_exp = calcular_posicao_estado_pais(df_exp_ano_estados, codigos_paises)
-            produtos_exportacao = agregar_dados_por_produto(df_exp_ano_mg_paises.copy(), df_ncm) # Para o texto
-            
-            df_exp_mun = carregar_dataframe(url_exp_mun_principal, f"EXP_{ano_principal}_MUN.csv", usecols=MUN_COLS, dtypes=MUN_DTYPES)
-            if df_exp_mun is None:
-                st.error("Não foi possível carregar dados de exportação por município. Abortando.")
-                st.stop()
-                
-            df_exp_mun_filtrado = df_exp_mun[(df_exp_mun['SG_UF_MUN'] == 'MG') & (df_exp_mun['CO_PAIS'].isin(codigos_paises)) & (df_exp_mun['CO_MES'].isin(meses_para_filtrar))]
-            exportacoes_por_municipio, total_exportacoes_municipios = agregar_dados_por_municipio(df_exp_mun_filtrado)
-            
-            del df_exp_ano_estados, df_exp_ano_anterior_estados, df_exp_ano_mg 
-            
+            # IMPORTAÇÕES
             df_imp_ano = carregar_dataframe(url_imp_ano_principal, f"IMP_{ano_principal}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
             df_imp_ano_anterior = carregar_dataframe(url_imp_ano_comparacao, f"IMP_{ano_comparacao}.csv", usecols=NCM_COLS, dtypes=NCM_DTYPES)
             
@@ -720,196 +686,171 @@ if st.button(" Iniciar Geração do Relatório"):
             df_imp_ano_anterior['SH4'] = df_imp_ano_anterior['CO_NCM'].apply(get_sh4)
             
             df_imp_ano_estados = filtrar_dados_por_estado_e_mes(df_imp_ano, estados_brasileiros, meses_para_filtrar)
-            df_imp_ano_anterior_estados = filtrar_dados_por_estado_e_mes(df_imp_ano_anterior, estados_brasileiros, meses_para_filtrar)
             df_imp_ano_mg = filtrar_dados_por_estado_e_mes(df_imp_ano, ['MG'], meses_para_filtrar)
+            
+            # DFs Municipais
+            df_exp_mun = carregar_dataframe(url_exp_mun_principal, f"EXP_{ano_principal}_MUN.csv", usecols=MUN_COLS, dtypes=MUN_DTYPES)
+            df_imp_mun = carregar_dataframe(url_imp_mun_principal, f"IMP_{ano_principal}_MUN.csv", usecols=MUN_COLS, dtypes=MUN_DTYPES)
+            
+            # FILTROS PRINCIPAIS PARA O DOC (AGRUPADO)
+            df_exp_ano_mg_paises = filtrar_dados_por_mg_e_pais(df_exp_ano, codigos_paises, agrupado, meses_para_filtrar)
+            df_exp_ano_anterior_mg_paises = filtrar_dados_por_mg_e_pais(df_exp_ano_anterior, codigos_paises, agrupado, meses_para_filtrar)
+            
+            # --- CÁLCULOS GERAIS PARA O AGRUPADO ---
+            exportacao_pais_ano = df_exp_ano_mg_paises['VL_FOB'].sum()
+            exportacao_pais_ano_anterior = df_exp_ano_anterior_mg_paises['VL_FOB'].sum()
+            exportacao_mg_total_ano = df_exp_ano_mg['VL_FOB'].sum()
+            
             df_imp_ano_mg_paises = filtrar_dados_por_mg_e_pais(df_imp_ano, codigos_paises, agrupado, meses_para_filtrar)
             df_imp_ano_anterior_mg_paises = filtrar_dados_por_mg_e_pais(df_imp_ano_anterior, codigos_paises, agrupado, meses_para_filtrar)
             importacao_pais_ano = df_imp_ano_mg_paises['VL_FOB'].sum()
             importacao_pais_ano_anterior = df_imp_ano_anterior_mg_paises['VL_FOB'].sum()
-            
-            if not agrupado:
-                ranking_mg_imp = calcular_ranking_por_pais(df_imp_ano_mg)
-                try:
-                    posicao_pais_mg_imp = ranking_mg_imp.index.get_loc(codigos_paises[0]) + 1
-                except KeyError:
-                    posicao_pais_mg_imp = 0
-            else:
-                posicao_pais_mg_imp = None
-            
             importacao_mg_total_ano = df_imp_ano_mg['VL_FOB'].sum()
-            participacao_pais_mg_imp = calcular_participacao(importacao_pais_ano, importacao_mg_total_ano)
-            diferenca_importacao, tipo_diferenca_imp = calcular_diferenca_percentual(importacao_pais_ano, importacao_pais_ano_anterior)
-            
-            importacao_mg_para_pais = df_imp_ano[ (df_imp_ano['SG_UF_NCM'] == 'MG') & (df_imp_ano['CO_PAIS'].isin(codigos_paises)) & (df_imp_ano['CO_MES'].isin(meses_para_filtrar)) ]['VL_FOB'].sum()
-            importacao_brasil_pais = df_imp_ano[ (df_imp_ano['CO_PAIS'].isin(codigos_paises)) & (df_imp_ano['CO_MES'].isin(meses_para_filtrar)) ]['VL_FOB'].sum()
-            
-            participacao_mg_brasil_imp = calcular_participacao(importacao_mg_para_pais, importacao_brasil_pais)
-            posicao_mg_pais_imp = calcular_posicao_estado_pais(df_imp_ano_estados, codigos_paises)
-            produtos_importacao = agregar_dados_por_produto(df_imp_ano_mg_paises.copy(), df_ncm) # Para o texto
-            
-            df_imp_mun = carregar_dataframe(url_imp_mun_principal, f"IMP_{ano_principal}_MUN.csv", usecols=MUN_COLS, dtypes=MUN_DTYPES)
-            if df_imp_mun is None:
-                st.error("Não foi possível carregar dados de importação por município. Abortando.")
-                st.stop()
-
-            df_imp_mun_filtrado = df_imp_mun[(df_imp_mun['SG_UF_MUN'] == 'MG') & (df_imp_mun['CO_PAIS'].isin(codigos_paises)) & (df_imp_mun['CO_MES'].isin(meses_para_filtrar))]
-            importacoes_por_municipio, total_importacoes_municipios = agregar_dados_por_municipio(df_imp_mun_filtrado)
-            
-            del df_imp_ano_estados, df_imp_ano_anterior_estados, df_imp_ano_mg, df_imp_mun, df_imp_mun_filtrado
             
             balanca_ano, balanca_ano_anterior, fluxo_comercial_ano, fluxo_comercial_ano_anterior, variacao_balanca, variacao_fluxo = calcular_balanca_e_fluxo(exportacao_pais_ano, importacao_pais_ano, exportacao_pais_ano_anterior, importacao_pais_ano_anterior)
-            
+
             if agrupado:
                 app = DocumentoApp(logo_path=logo_path_to_use)
                 paises_corretos = nomes_paises_validos 
                 nome_relatorio = nome_agrupamento if (nome_agrupamento and nome_agrupamento.strip() != "") else ', '.join(paises_corretos)
-
-                # Geração de Texto ...
-                fluxo_e_balanca = f"Considerando {nome_periodo}, Minas Gerais e {nome_relatorio} tiveram um fluxo comercial de {formatar_valor(fluxo_comercial_ano)}, ..."
-                texto_exportacao = f"As exportações mineiras para {nome_relatorio} somaram {formatar_valor(exportacao_pais_ano)}..."
-                # ... (resto da geração de texto) ...
                 
                 titulo_documento = f"Briefing - {nome_relatorio} - {ano_principal}"
-                
-                # --- NOVO: Lógica das Tabelas (Agrupado) ---
-                
-                # --- Tabela Exportação ---
-                st.header(f"Principais Produtos Exportados (MG para {nome_relatorio})")
-                exp_produtos_princ = df_exp_ano_mg_paises.groupby('SH4')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
-                exp_produtos_comp = df_exp_ano_anterior_mg_paises.groupby('SH4')['VL_FOB'].sum().reset_index()
-                
-                exp_produtos_princ['Produto'] = exp_produtos_princ['SH4'].map(mapa_sh4_nomes).fillna("Desconhecido")
-                exp_produtos_princ[f'Valor {ano_principal} (US$)'] = exp_produtos_princ['VL_FOB']
-                exp_produtos_comp['Produto'] = exp_produtos_comp['SH4'].map(mapa_sh4_nomes).fillna("Desconhecido")
-                exp_produtos_comp[f'Valor {ano_comparacao} (US$)'] = exp_produtos_comp['VL_FOB']
-                
-                exp_final_prod = pd.merge(exp_produtos_princ[['Produto', 'SH4', f'Valor {ano_principal} (US$)']], 
-                                          exp_produtos_comp[['Produto', 'SH4', f'Valor {ano_comparacao} (US$)']], 
-                                          on=["Produto", "SH4"], how="outer").fillna(0)
-                
-                exp_final_prod['Variação %'] = 100 * (exp_final_prod[f'Valor {ano_principal} (US$)'] - exp_final_prod[f'Valor {ano_comparacao} (US$)']) / exp_final_prod[f'Valor {ano_comparacao} (US$)']
-                exp_final_prod['Variação %'] = exp_final_prod['Variação %'].replace([float('inf'), float('-inf')], 0).fillna(0).round(2)
-                exp_final_prod[f'Valor {ano_principal}'] = exp_final_prod[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
-                exp_final_prod[f'Valor {ano_comparacao}'] = exp_final_prod[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
-                
-                df_display_exp_prod = exp_final_prod.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).reset_index(drop=True)
-                
-                st.dataframe(
-                    df_display_exp_prod[['Produto', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']].head(top_n_produtos),
-                    hide_index=True,
-                    use_container_width=True
-                )
-
-                # --- Expander Exportação ---
-                with st.expander("Ver detalhamento de países por produto (Exportação)"):
-                    top_produtos_lista = df_display_exp_prod['SH4'].head(top_n_produtos).tolist()
-                    
-                    detalhe_exp_princ = df_exp_ano_mg_paises.groupby(['SH4', 'CO_PAIS'])['VL_FOB'].sum().reset_index()
-                    detalhe_exp_comp = df_exp_ano_anterior_mg_paises.groupby(['SH4', 'CO_PAIS'])['VL_FOB'].sum().reset_index()
-                    
-                    detalhe_exp_princ['Produto'] = detalhe_exp_princ['SH4'].map(mapa_sh4_nomes)
-                    detalhe_exp_comp['Produto'] = detalhe_exp_comp['SH4'].map(mapa_sh4_nomes)
-                    detalhe_exp_princ['País'] = detalhe_exp_princ['CO_PAIS'].map(mapa_nomes_paises)
-                    detalhe_exp_comp['País'] = detalhe_exp_comp['CO_PAIS'].map(mapa_nomes_paises)
-
-                    detalhe_exp_princ = detalhe_exp_princ.rename(columns={'VL_FOB': f'Valor {ano_principal} (US$)'})
-                    detalhe_exp_comp = detalhe_exp_comp.rename(columns={'VL_FOB': f'Valor {ano_comparacao} (US$)'})
-
-                    detalhe_exp_final = pd.merge(
-                        detalhe_exp_princ[['Produto', 'País', 'SH4', f'Valor {ano_principal} (US$)']],
-                        detalhe_exp_comp[['Produto', 'País', 'SH4', f'Valor {ano_comparacao} (US$)']],
-                        on=['Produto', 'País', 'SH4'], how='outer'
-                    ).fillna(0)
-
-                    detalhe_exp_final = detalhe_exp_final[detalhe_exp_final['SH4'].isin(top_produtos_lista)]
-
-                    detalhe_exp_final['Variação %'] = 100 * (detalhe_exp_final[f'Valor {ano_principal} (US$)'] - detalhe_exp_final[f'Valor {ano_comparacao} (US$)']) / detalhe_exp_final[f'Valor {ano_comparacao} (US$)']
-                    detalhe_exp_final['Variação %'] = detalhe_exp_final['Variação %'].replace([float('inf'), float('-inf')], 0).fillna(0).round(2)
-                    detalhe_exp_final[f'Valor {ano_principal}'] = detalhe_exp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
-                    detalhe_exp_final[f'Valor {ano_comparacao}'] = detalhe_exp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
-
-                    detalhe_exp_final = detalhe_exp_final.sort_values(by=['Produto', f'Valor {ano_principal} (US$)'], ascending=[True, False])
-                    st.dataframe(
-                        detalhe_exp_final[['Produto', 'País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']],
-                        hide_index=True,
-                        use_container_width=True
-                    )
-                
-                # --- Tabela Importação ---
-                st.header(f"Principais Produtos Importados (MG de {nome_relatorio})")
-                imp_produtos_princ = df_imp_ano_mg_paises.groupby('SH4')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
-                imp_produtos_comp = df_imp_ano_anterior_mg_paises.groupby('SH4')['VL_FOB'].sum().reset_index()
-                
-                imp_produtos_princ['Produto'] = imp_produtos_princ['SH4'].map(mapa_sh4_nomes).fillna("Desconhecido")
-                imp_produtos_princ[f'Valor {ano_principal} (US$)'] = imp_produtos_princ['VL_FOB']
-                imp_produtos_comp['Produto'] = imp_produtos_comp['SH4'].map(mapa_sh4_nomes).fillna("Desconhecido")
-                imp_produtos_comp[f'Valor {ano_comparacao} (US$)'] = imp_produtos_comp['VL_FOB']
-                
-                imp_final_prod = pd.merge(imp_produtos_princ[['Produto', 'SH4', f'Valor {ano_principal} (US$)']], 
-                                          imp_produtos_comp[['Produto', 'SH4', f'Valor {ano_comparacao} (US$)']], 
-                                          on=["Produto", "SH4"], how="outer").fillna(0)
-                
-                imp_final_prod['Variação %'] = 100 * (imp_final_prod[f'Valor {ano_principal} (US$)'] - imp_final_prod[f'Valor {ano_comparacao} (US$)']) / imp_final_prod[f'Valor {ano_comparacao} (US$)']
-                imp_final_prod['Variação %'] = imp_final_prod['Variação %'].replace([float('inf'), float('-inf')], 0).fillna(0).round(2)
-                imp_final_prod[f'Valor {ano_principal}'] = imp_final_prod[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
-                imp_final_prod[f'Valor {ano_comparacao}'] = imp_final_prod[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
-                
-                df_display_imp_prod = imp_final_prod.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).reset_index(drop=True)
-                
-                st.dataframe(
-                    df_display_imp_prod[['Produto', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']].head(top_n_produtos),
-                    hide_index=True,
-                    use_container_width=True
-                )
-
-                # --- Expander Importação ---
-                with st.expander("Ver detalhamento de países por produto (Importação)"):
-                    top_produtos_lista_imp = df_display_imp_prod['SH4'].head(top_n_produtos).tolist()
-                    
-                    detalhe_imp_princ = df_imp_ano_mg_paises.groupby(['SH4', 'CO_PAIS'])['VL_FOB'].sum().reset_index()
-                    detalhe_imp_comp = df_imp_ano_anterior_mg_paises.groupby(['SH4', 'CO_PAIS'])['VL_FOB'].sum().reset_index()
-                    
-                    detalhe_imp_princ['Produto'] = detalhe_imp_princ['SH4'].map(mapa_sh4_nomes)
-                    detalhe_imp_comp['Produto'] = detalhe_imp_comp['SH4'].map(mapa_sh4_nomes)
-                    detalhe_imp_princ['País'] = detalhe_imp_princ['CO_PAIS'].map(mapa_nomes_paises)
-                    detalhe_imp_comp['País'] = detalhe_imp_comp['CO_PAIS'].map(mapa_nomes_paises)
-
-                    detalhe_imp_princ = detalhe_imp_princ.rename(columns={'VL_FOB': f'Valor {ano_principal} (US$)'})
-                    detalhe_imp_comp = detalhe_imp_comp.rename(columns={'VL_FOB': f'Valor {ano_comparacao} (US$)'})
-
-                    detalhe_imp_final = pd.merge(
-                        detalhe_imp_princ[['Produto', 'País', 'SH4', f'Valor {ano_principal} (US$)']],
-                        detalhe_imp_comp[['Produto', 'País', 'SH4', f'Valor {ano_comparacao} (US$)']],
-                        on=['Produto', 'País', 'SH4'], how='outer'
-                    ).fillna(0)
-
-                    detalhe_imp_final = detalhe_imp_final[detalhe_imp_final['SH4'].isin(top_produtos_lista_imp)]
-
-                    detalhe_imp_final['Variação %'] = 100 * (detalhe_imp_final[f'Valor {ano_principal} (US$)'] - detalhe_imp_final[f'Valor {ano_comparacao} (US$)']) / detalhe_imp_final[f'Valor {ano_comparacao} (US$)']
-                    detalhe_imp_final['Variação %'] = detalhe_imp_final['Variação %'].replace([float('inf'), float('-inf')], 0).fillna(0).round(2)
-                    detalhe_imp_final[f'Valor {ano_principal}'] = detalhe_imp_final[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
-                    detalhe_imp_final[f'Valor {ano_comparacao}'] = detalhe_imp_final[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
-
-                    detalhe_imp_final = detalhe_imp_final.sort_values(by=['Produto', f'Valor {ano_principal} (US$)'], ascending=[True, False])
-                    st.dataframe(
-                        detalhe_imp_final[['Produto', 'País', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']],
-                        hide_index=True,
-                        use_container_width=True
-                    )
-                # --- FIM NOVO ---
-                
-                # Gera o Docx
                 app.set_titulo(titulo_documento)
-                # ... (resto da geração do docx) ...
+                app.nova_secao()
                 
+                # --- Seção 1: Balança Comercial ---
+                app.adicionar_titulo("Fluxo Comercial")
+                
+                # Variação Fluxo
+                tipo_var_fluxo = "queda" if variacao_fluxo < 0 else "acréscimo" if variacao_fluxo > 0 else "estabilidade"
+                val_var_fluxo = abs(round(variacao_fluxo, 2))
+                
+                # Variação Balança
+                tipo_var_bal = "queda" if variacao_balanca < 0 else "acréscimo" if variacao_balanca > 0 else "estabilidade"
+                val_var_bal = abs(round(variacao_balanca, 2))
+                saldo_str = "positiva" if balanca_ano >= 0 else "negativa"
+                
+                texto_balanca = (
+                    f"{nome_periodo_em}, Minas Gerais e {nome_relatorio} tiveram um fluxo comercial de {formatar_valor(fluxo_comercial_ano)}, "
+                    f"representando {tipo_var_fluxo} de {val_var_fluxo}% em comparação a {nome_periodo_comp}. "
+                    f"A balança comercial fechou {saldo_str} para Minas Gerais em {formatar_valor(balanca_ano)}, "
+                    f"apresentando uma {tipo_var_bal} de {val_var_bal}% em relação a {nome_periodo_comp}."
+                )
+                app.adicionar_paragrafo(texto_balanca)
+                
+                # --- Seção 2: Exportações DOC ---
+                app.nova_secao()
+                app.adicionar_titulo("Exportações")
+                
+                # Cálculos específicos
+                ranking_mg_dest = calcular_posicao_estado_pais(df_exp_ano_estados, codigos_paises) # ranking que MG tem no BR para esse pais
+                posicao_pais_para_mg_exp = 0 # Ranking que ESSE PAÍS tem para MG
+                rank_df = df_exp_ano_mg.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False)
+                # Para agrupado, é dificil dizer "O Ranking do Bloco". Vamos somar e ver onde cairia se fosse um país, ou ignorar se for bloco.
+                # Se for só 1 país (agrupado=True mas len=1), calcula.
+                if len(codigos_paises) == 1:
+                    try:
+                        posicao_pais_para_mg_exp = rank_df.index.get_loc(codigos_paises[0]) + 1
+                    except:
+                        posicao_pais_para_mg_exp = "-"
+                else:
+                     posicao_pais_para_mg_exp = "(bloco)"
+
+                diferenca_exportacao, tipo_diferenca_exp = calcular_diferenca_percentual(exportacao_pais_ano, exportacao_pais_ano_anterior)
+                participacao_pais_mg_exp = calcular_participacao(exportacao_pais_ano, exportacao_mg_total_ano)
+                
+                # Ranking e Part de MG no Brasil
+                posicao_mg_br_exp, part_mg_br_exp = calcular_ranking_e_participacao_brasil(df_exp_ano, codigos_paises)
+
+                # Strings de listas
+                texto_produtos_exp = gerar_texto_lista_produtos(df_exp_ano_mg_paises, mapa_sh4_nomes, top_n_produtos)
+                
+                # Filtra municipios
+                df_exp_mun_filtrado = df_exp_mun[(df_exp_mun['SG_UF_MUN'] == 'MG') & (df_exp_mun['CO_PAIS'].isin(codigos_paises)) & (df_exp_mun['CO_MES'].isin(meses_para_filtrar))]
+                texto_mun_exp, count_mun_exp = gerar_texto_lista_municipios(df_exp_mun_filtrado, df_uf_mun, top_n_produtos)
+                
+                texto_exportacao_1 = (
+                    f"{nome_relatorio} foi o {posicao_pais_para_mg_exp}º destino das exportações de Minas Gerais em {ano_principal}. "
+                    f"As exportações mineiras para {nome_relatorio} somaram {formatar_valor(exportacao_pais_ano)} em {ano_principal}, "
+                    f"{tipo_diferenca_exp} de {diferenca_exportacao}% em relação a {ano_comparacao}. "
+                    f"A participação de {nome_relatorio} nas exportações totais de Minas Gerais em {ano_principal} foi equivalente a {participacao_pais_mg_exp}%."
+                )
+                app.adicionar_paragrafo(texto_exportacao_1)
+                
+                texto_exportacao_2 = (
+                    f"Minas Gerais foi o {posicao_mg_br_exp}º principal estado exportador brasileiro para {nome_relatorio} em {ano_principal}, "
+                    f"com uma participação de {part_mg_br_exp}% nas vendas do Brasil ao país."
+                )
+                app.adicionar_paragrafo(texto_exportacao_2)
+                
+                app.adicionar_paragrafo(f"Em {ano_principal}, os principais produtos exportados de Minas Gerais para {nome_relatorio} foram: {texto_produtos_exp}")
+                
+                app.adicionar_paragrafo(f"Dentre os {count_mun_exp} municípios de Minas Gerais que exportaram produtos para {nome_relatorio} em {ano_principal}, os principais foram: {texto_mun_exp}")
+
+                # --- Seção 3: Importações DOC ---
+                app.nova_secao()
+                app.adicionar_titulo("Importações")
+                
+                # Cálculos imp
+                diferenca_importacao, tipo_diferenca_imp = calcular_diferenca_percentual(importacao_pais_ano, importacao_pais_ano_anterior)
+                participacao_pais_mg_imp = calcular_participacao(importacao_pais_ano, importacao_mg_total_ano)
+                posicao_mg_br_imp, part_mg_br_imp = calcular_ranking_e_participacao_brasil(df_imp_ano, codigos_paises)
+                
+                rank_df_imp = df_imp_ano_mg.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False)
+                if len(codigos_paises) == 1:
+                    try:
+                        posicao_pais_para_mg_imp = rank_df_imp.index.get_loc(codigos_paises[0]) + 1
+                    except:
+                        posicao_pais_para_mg_imp = "-"
+                else:
+                     posicao_pais_para_mg_imp = "(bloco)"
+
+                texto_produtos_imp = gerar_texto_lista_produtos(df_imp_ano_mg_paises, mapa_sh4_nomes, top_n_produtos)
+                
+                df_imp_mun_filtrado = df_imp_mun[(df_imp_mun['SG_UF_MUN'] == 'MG') & (df_imp_mun['CO_PAIS'].isin(codigos_paises)) & (df_imp_mun['CO_MES'].isin(meses_para_filtrar))]
+                texto_mun_imp, count_mun_imp = gerar_texto_lista_municipios(df_imp_mun_filtrado, df_uf_mun, top_n_produtos)
+
+                texto_importacao_1 = (
+                    f"{nome_relatorio} foi a {posicao_pais_para_mg_imp}ª origem das importações de Minas Gerais em {ano_principal}. "
+                    f"As importações mineiras provenientes de {nome_relatorio} somaram {formatar_valor(importacao_pais_ano)} em {ano_principal}, "
+                    f"{tipo_diferenca_imp} de {diferenca_importacao}% em relação a {ano_comparacao}. "
+                    f"A participação de {nome_relatorio} nas importações totais de Minas Gerais em {ano_principal} foi equivalente a {participacao_pais_mg_imp}%."
+                )
+                app.adicionar_paragrafo(texto_importacao_1)
+                
+                texto_importacao_2 = (
+                    f"Minas Gerais foi o {posicao_mg_br_imp}º principal estado importador brasileiro de {nome_relatorio} em {ano_principal}, "
+                    f"com uma participação de {part_mg_br_imp}% nas compras do Brasil ao país."
+                )
+                app.adicionar_paragrafo(texto_importacao_2)
+                
+                app.adicionar_paragrafo(f"Em {ano_principal}, os principais produtos importados para Minas Gerais de {nome_relatorio} foram: {texto_produtos_imp}")
+                
+                app.adicionar_paragrafo(f"Dentre os {count_mun_imp} municípios de Minas Gerais que importaram produtos de {nome_relatorio} em {ano_principal}, os principais foram: {texto_mun_imp}")
+
+                # --- EXIBIÇÃO APENAS NO STREAMLIT (Tabelas) ---
+                st.subheader("Visualização de Dados (Não incluído no DOCX)")
+                
+                st.write("**Exportações (Top Produtos)**")
+                exp_produtos_princ = df_exp_ano_mg_paises.groupby('SH4')['VL_FOB'].sum().sort_values(ascending=False).head(top_n_produtos).reset_index()
+                exp_produtos_princ['Produto'] = exp_produtos_princ['SH4'].map(mapa_sh4_nomes)
+                exp_produtos_princ[f'Valor {ano_principal}'] = exp_produtos_princ['VL_FOB'].apply(formatar_valor)
+                st.dataframe(exp_produtos_princ[['Produto', f'Valor {ano_principal}']], hide_index=True)
+                
+                st.write("**Importações (Top Produtos)**")
+                imp_produtos_princ = df_imp_ano_mg_paises.groupby('SH4')['VL_FOB'].sum().sort_values(ascending=False).head(top_n_produtos).reset_index()
+                imp_produtos_princ['Produto'] = imp_produtos_princ['SH4'].map(mapa_sh4_nomes)
+                imp_produtos_princ[f'Valor {ano_principal}'] = imp_produtos_princ['VL_FOB'].apply(formatar_valor)
+                st.dataframe(imp_produtos_princ[['Produto', f'Valor {ano_principal}']], hide_index=True)
+
                 file_bytes, file_name = app.finalizar_documento() 
                 st.session_state.arquivos_gerados_pais.append({"name": file_name, "data": file_bytes})
+                st.success(f"Relatório '{file_name}' gerado com sucesso!")
 
             else:
                 # --- LÓGICA PARA SEPARADOS ---
                 paises_corretos = nomes_paises_validos
                 
-                # Recarrega DFs completos para o loop
                 df_exp_ano_loop = df_exp_ano.copy()
                 df_exp_ano_anterior_loop = df_exp_ano_anterior.copy()
                 df_imp_ano_loop = df_imp_ano.copy()
@@ -922,77 +863,108 @@ if st.button(" Iniciar Geração do Relatório"):
                     codigos_paises_loop = [obter_codigo_pais(pais, mapa_paises_reverso)]
 
                     # Filtra dados para este país
-                    df_exp_ano_mg_paises = filtrar_dados_por_mg_e_pais(df_exp_ano_loop, codigos_paises_loop, False, meses_para_filtrar)
-                    df_exp_ano_anterior_mg_paises = filtrar_dados_por_mg_e_pais(df_exp_ano_anterior_loop, codigos_paises_loop, False, meses_para_filtrar)
-                    df_imp_ano_mg_paises = filtrar_dados_por_mg_e_pais(df_imp_ano_loop, codigos_paises_loop, False, meses_para_filtrar)
-                    df_imp_ano_anterior_mg_paises = filtrar_dados_por_mg_e_pais(df_imp_ano_anterior_loop, codigos_paises_loop, False, meses_para_filtrar)
+                    df_exp_atual_loop = filtrar_dados_por_mg_e_pais(df_exp_ano_loop, codigos_paises_loop, False, meses_para_filtrar)
+                    df_exp_ant_loop = filtrar_dados_por_mg_e_pais(df_exp_ano_anterior_loop, codigos_paises_loop, False, meses_para_filtrar)
+                    df_imp_atual_loop = filtrar_dados_por_mg_e_pais(df_imp_ano_loop, codigos_paises_loop, False, meses_para_filtrar)
+                    df_imp_ant_loop = filtrar_dados_por_mg_e_pais(df_imp_ano_anterior_loop, codigos_paises_loop, False, meses_para_filtrar)
                     
-                    # Gera texto (código original omitido)
-                    # ... (cálculos de posição, balança, etc) ...
+                    # Valores e Balança
+                    v_exp_atual = df_exp_atual_loop['VL_FOB'].sum()
+                    v_exp_ant = df_exp_ant_loop['VL_FOB'].sum()
+                    v_imp_atual = df_imp_atual_loop['VL_FOB'].sum()
+                    v_imp_ant = df_imp_ant_loop['VL_FOB'].sum()
                     
-                    # --- NOVO: Lógica das Tabelas (Separados) ---
+                    balanca_loop, balanca_ant_loop, fluxo_loop, fluxo_ant_loop, var_bal, var_fluxo = calcular_balanca_e_fluxo(v_exp_atual, v_imp_atual, v_exp_ant, v_imp_ant)
+
+                    titulo_documento = f"Briefing - {pais} - {ano_principal}"
+                    app.set_titulo(titulo_documento)
+                    app.nova_secao()
+
+                    # Texto Balança
+                    app.adicionar_titulo("Fluxo Comercial")
+                    tipo_var_fluxo = "queda" if var_fluxo < 0 else "acréscimo" if var_fluxo > 0 else "estabilidade"
+                    val_var_fluxo = abs(round(var_fluxo, 2))
+                    tipo_var_bal = "queda" if var_bal < 0 else "acréscimo" if var_bal > 0 else "estabilidade"
+                    val_var_bal = abs(round(var_bal, 2))
+                    saldo_str = "positiva" if balanca_loop >= 0 else "negativa"
                     
-                    # --- Tabela Exportação ---
-                    st.header(f"Principais Produtos Exportados (MG para {pais})")
-                    exp_produtos_princ = df_exp_ano_mg_paises.groupby('SH4')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
-                    exp_produtos_comp = df_exp_ano_anterior_mg_paises.groupby('SH4')['VL_FOB'].sum().reset_index()
-                    
-                    exp_produtos_princ['Produto'] = exp_produtos_princ['SH4'].map(mapa_sh4_nomes).fillna("Desconhecido")
-                    exp_produtos_princ[f'Valor {ano_principal} (US$)'] = exp_produtos_princ['VL_FOB']
-                    exp_produtos_comp['Produto'] = exp_produtos_comp['SH4'].map(mapa_sh4_nomes).fillna("Desconhecido")
-                    exp_produtos_comp[f'Valor {ano_comparacao} (US$)'] = exp_produtos_comp['VL_FOB']
-                    
-                    exp_final_prod = pd.merge(exp_produtos_princ[['Produto', f'Valor {ano_principal} (US$)']], 
-                                              exp_produtos_comp[['Produto', f'Valor {ano_comparacao} (US$)']], 
-                                              on="Produto", how="outer").fillna(0)
-                    
-                    exp_final_prod['Variação %'] = 100 * (exp_final_prod[f'Valor {ano_principal} (US$)'] - exp_final_prod[f'Valor {ano_comparacao} (US$)']) / exp_final_prod[f'Valor {ano_comparacao} (US$)']
-                    exp_final_prod['Variação %'] = exp_final_prod['Variação %'].replace([float('inf'), float('-inf')], 0).fillna(0).round(2)
-                    exp_final_prod[f'Valor {ano_principal}'] = exp_final_prod[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
-                    exp_final_prod[f'Valor {ano_comparacao}'] = exp_final_prod[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
-                    
-                    df_display_exp_prod = exp_final_prod.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).reset_index(drop=True)
-                    
-                    st.dataframe(
-                        df_display_exp_prod[['Produto', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']].head(top_n_produtos),
-                        hide_index=True,
-                        use_container_width=True
+                    texto_balanca = (
+                        f"{nome_periodo_em}, Minas Gerais e {pais} tiveram um fluxo comercial de {formatar_valor(fluxo_loop)}, "
+                        f"representando {tipo_var_fluxo} de {val_var_fluxo}% em comparação a {nome_periodo_comp}. "
+                        f"A balança comercial fechou {saldo_str} para Minas Gerais em {formatar_valor(balanca_loop)}, "
+                        f"apresentando uma {tipo_var_bal} de {val_var_bal}% em relação a {nome_periodo_comp}."
                     )
+                    app.adicionar_paragrafo(texto_balanca)
                     
-                    # --- Tabela Importação ---
-                    st.header(f"Principais Produtos Importados (MG de {pais})")
-                    imp_produtos_princ = df_imp_ano_mg_paises.groupby('SH4')['VL_FOB'].sum().sort_values(ascending=False).reset_index()
-                    imp_produtos_comp = df_imp_ano_anterior_mg_paises.groupby('SH4')['VL_FOB'].sum().reset_index()
+                    # Texto Exportações
+                    app.nova_secao()
+                    app.adicionar_titulo("Exportações")
                     
-                    imp_produtos_princ['Produto'] = imp_produtos_princ['SH4'].map(mapa_sh4_nomes).fillna("Desconhecido")
-                    imp_produtos_princ[f'Valor {ano_principal} (US$)'] = imp_produtos_princ['VL_FOB']
-                    imp_produtos_comp['Produto'] = imp_produtos_comp['SH4'].map(mapa_sh4_nomes).fillna("Desconhecido")
-                    imp_produtos_comp[f'Valor {ano_comparacao} (US$)'] = imp_produtos_comp['VL_FOB']
+                    # Rankings
+                    rank_df = df_exp_ano_mg.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False)
+                    try:
+                        pos_pais_mg = rank_df.index.get_loc(codigos_paises_loop[0]) + 1
+                    except:
+                        pos_pais_mg = "-"
                     
-                    imp_final_prod = pd.merge(imp_produtos_princ[['Produto', f'Valor {ano_principal} (US$)']], 
-                                              imp_produtos_comp[['Produto', f'Valor {ano_comparacao} (US$)']], 
-                                              on="Produto", how="outer").fillna(0)
+                    dif_exp_val, tipo_dif_exp = calcular_diferenca_percentual(v_exp_atual, v_exp_ant)
+                    part_exp = calcular_participacao(v_exp_atual, exportacao_mg_total_ano)
+                    pos_mg_br_exp, part_mg_br_exp = calcular_ranking_e_participacao_brasil(df_exp_ano, codigos_paises_loop)
                     
-                    imp_final_prod['Variação %'] = 100 * (imp_final_prod[f'Valor {ano_principal} (US$)'] - imp_final_prod[f'Valor {ano_comparacao} (US$)']) / imp_final_prod[f'Valor {ano_comparacao} (US$)']
-                    imp_final_prod['Variação %'] = imp_final_prod['Variação %'].replace([float('inf'), float('-inf')], 0).fillna(0).round(2)
-                    imp_final_prod[f'Valor {ano_principal}'] = imp_final_prod[f'Valor {ano_principal} (US$)'].apply(formatar_valor)
-                    imp_final_prod[f'Valor {ano_comparacao}'] = imp_final_prod[f'Valor {ano_comparacao} (US$)'].apply(formatar_valor)
+                    texto_prods_exp = gerar_texto_lista_produtos(df_exp_atual_loop, mapa_sh4_nomes, top_n_produtos)
                     
-                    df_display_imp_prod = imp_final_prod.sort_values(by=f'Valor {ano_principal} (US$)', ascending=False).reset_index(drop=True)
-                    
-                    st.dataframe(
-                        df_display_imp_prod[['Produto', f'Valor {ano_principal}', f'Valor {ano_comparacao}', 'Variação %']].head(top_n_produtos),
-                        hide_index=True,
-                        use_container_width=True
+                    df_exp_mun_loop = df_exp_mun[(df_exp_mun['SG_UF_MUN'] == 'MG') & (df_exp_mun['CO_PAIS'].isin(codigos_paises_loop)) & (df_exp_mun['CO_MES'].isin(meses_para_filtrar))]
+                    texto_mun_exp, count_mun_exp = gerar_texto_lista_municipios(df_exp_mun_loop, df_uf_mun, top_n_produtos)
+
+                    app.adicionar_paragrafo(
+                        f"{pais} foi o {pos_pais_mg}º destino das exportações de Minas Gerais em {ano_principal}. "
+                        f"As exportações mineiras para {pais} somaram {formatar_valor(v_exp_atual)} em {ano_principal}, "
+                        f"{tipo_dif_exp} de {dif_exp_val}% em relação a {ano_comparacao}. "
+                        f"A participação de {pais} nas exportações totais de Minas Gerais em {ano_principal} foi equivalente a {part_exp}%."
                     )
-                    # --- FIM NOVO ---
+                    app.adicionar_paragrafo(
+                        f"Minas Gerais foi o {pos_mg_br_exp}º principal estado exportador brasileiro para {pais} em {ano_principal}, "
+                        f"com uma participação de {part_mg_br_exp}% nas vendas do Brasil ao país."
+                    )
+                    app.adicionar_paragrafo(f"Em {ano_principal}, os principais produtos exportados de Minas Gerais para {pais} foram: {texto_prods_exp}")
+                    app.adicionar_paragrafo(f"Dentre os {count_mun_exp} municípios de Minas Gerais que exportaram produtos para {pais} em {ano_principal}, os principais foram: {texto_mun_exp}")
+
+                    # Texto Importações
+                    app.nova_secao()
+                    app.adicionar_titulo("Importações")
                     
-                    # Gera o Docx (código original omitido)
-                    # ...
+                    rank_df_imp = df_imp_ano_mg.groupby('CO_PAIS')['VL_FOB'].sum().sort_values(ascending=False)
+                    try:
+                        pos_pais_mg_imp = rank_df_imp.index.get_loc(codigos_paises_loop[0]) + 1
+                    except:
+                        pos_pais_mg_imp = "-"
+                    
+                    dif_imp_val, tipo_dif_imp = calcular_diferenca_percentual(v_imp_atual, v_imp_ant)
+                    part_imp = calcular_participacao(v_imp_atual, importacao_mg_total_ano)
+                    pos_mg_br_imp, part_mg_br_imp = calcular_ranking_e_participacao_brasil(df_imp_ano, codigos_paises_loop)
+                    
+                    texto_prods_imp = gerar_texto_lista_produtos(df_imp_atual_loop, mapa_sh4_nomes, top_n_produtos)
+                    
+                    df_imp_mun_loop = df_imp_mun[(df_imp_mun['SG_UF_MUN'] == 'MG') & (df_imp_mun['CO_PAIS'].isin(codigos_paises_loop)) & (df_imp_mun['CO_MES'].isin(meses_para_filtrar))]
+                    texto_mun_imp, count_mun_imp = gerar_texto_lista_municipios(df_imp_mun_loop, df_uf_mun, top_n_produtos)
+
+                    app.adicionar_paragrafo(
+                        f"{pais} foi a {pos_pais_mg_imp}ª origem das importações de Minas Gerais em {ano_principal}. "
+                        f"As importações mineiras provenientes de {pais} somaram {formatar_valor(v_imp_atual)} em {ano_principal}, "
+                        f"{tipo_dif_imp} de {dif_imp_val}% em relação a {ano_comparacao}. "
+                        f"A participação de {pais} nas importações totais de Minas Gerais em {ano_principal} foi equivalente a {part_imp}%."
+                    )
+                    app.adicionar_paragrafo(
+                        f"Minas Gerais foi o {pos_mg_br_imp}º principal estado importador brasileiro de {pais} em {ano_principal}, "
+                        f"com uma participação de {part_mg_br_imp}% nas compras do Brasil ao país."
+                    )
+                    app.adicionar_paragrafo(f"Em {ano_principal}, os principais produtos importados para Minas Gerais de {pais} foram: {texto_prods_imp}")
+                    app.adicionar_paragrafo(f"Dentre os {count_mun_imp} municípios de Minas Gerais que importaram produtos de {pais} em {ano_principal}, os principais foram: {texto_mun_imp}")
+
                     file_bytes, file_name = app.finalizar_documento()
                     st.session_state.arquivos_gerados_pais.append({"name": file_name, "data": file_bytes})
             
-            # Limpa DFs grandes da memória
+            # Limpeza de memória
             del df_exp_ano, df_exp_ano_anterior, df_imp_ano, df_imp_ano_anterior
             if 'df_exp_ano_loop' in locals():
                 del df_exp_ano_loop, df_exp_ano_anterior_loop, df_imp_ano_loop, df_imp_ano_anterior_loop
@@ -1001,7 +973,7 @@ if st.button(" Iniciar Geração do Relatório"):
             st.error(f"Ocorreu um erro inesperado durante a geração:")
             st.exception(e)
 
-# --- Bloco de exibição de Download (COM LÓGICA DE ZIP) ---
+# --- Bloco de exibição de Download ---
 if st.session_state.arquivos_gerados_pais:
     st.header("4. Relatórios Gerados")
     st.info("Clique para baixar os relatórios. Eles permanecerão aqui até que você gere um novo relatório.")
@@ -1045,7 +1017,7 @@ with col1:
     if os.path.exists(logo_footer_path):
         st.image(logo_footer_path, width=150)
     else:
-        st.caption("Logo AEST não encontrada.")
+        st.caption("Aest - Dados")
 
 with col2:
     st.caption("Desenvolvido por Aest - Dados e Subsecretaria de Promoção de Investimentos e Cadeias Produtivas")

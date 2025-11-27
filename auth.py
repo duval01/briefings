@@ -8,8 +8,8 @@ USERS = {
         "role": "admin",
         "name": "Admin AEST"
     },
-    "DPEX": {
-        "password": "senha_dpex_mude_isso", 
+    "DIPEX": {
+        "password": "dipex123", 
         "role": "dpex",
         "name": "Usuário DPEX"
     }
